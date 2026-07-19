@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<!-- スマホでの表示を整える設定。拡大縮小を防いでボタンを押しやすくする -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>うたっこ:こえの たかさ じっけん</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    font-family: "Hiragino Maru Gothic ProN", "UD Digi Kyokasho", "Rounded Mplus 1c", sans-serif;
+    background: linear-gradient(180deg, #e5f6ff 0%, #fff0f5 100%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  h1 {
+    font-size: 22px;
+    color: #4a9eda;
+    margin: 10px 0 4px 0;
+    text-align: center;
+  }
+  p.sub {
+    font-size: 14px;
+    color: #888;
+    margin: 0 0 16px 0;
+    text-align: center;
+  }
+
+  /* 音名を大きく表示するエリア(このアプリの主役) */
+  .note-display {
+    width: 100%;
+    max-width: 480px;
+    background: #ffffff;
+    border-radius: 24px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    padding: 24px 16px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .note-name {
+    font-size: 80px;
+    font-weight: bold;
+    color: #ff7a59;
+    line-height: 1.1;
+    min-height: 90px; /* 表示が「---」でも高さが変わってガタつかないように固定 */
+  }
+  .freq-text {
+    font-size: 20px;
+    color: #666;
+    margin-top: 4px;
+  }
+
+  /* 音量バーの見た目 */
+  .volume-area {
+    width: 100%;
+    max-width: 480px;
+    margin-bottom: 20px;
+  }
+  .volume-label {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 4px;
+  }
+  .volume-bar-outer {
+    width: 100%;
+    height: 28px;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.08);
+  }
+  .volume-bar-inner {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #48dbfb, #1dd1a1);
+    border-radius: 14px;
+    transition: width 0.08s linear; /* なめらかに動かす */
+  }
+
+  /* ボタン類 */
+  .big-btn {
+    width: 100%;
+    max-width: 480px;
+    height: 72px;
+    border: none;
+    border-radius: 18px;
+    font-size: 22px;
+    font-weight: bold;
+    color: #fff;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.15);
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+  .big-btn:active {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 rgba(0,0,0,0.15);
+  }
+  #startBtn { background: #ff7a59; }
+  #stopBtn { background: #b2bec3; display: none; }
+
+  /* 状態・エラーメッセージ表示 */
+  .status {
+    width: 100%;
+    max-width: 480px;
+    text-align: center;
+    font-size: 15px;
+    color: #555;
+    background: #ffffffaa;
+    border-radius: 12px;
+    padding: 12px;
+    min-height: 44px;
+  }
+  /* エラー時も怖い色は使わず、やさしいオレンジ系で表示 */
+  .status.error {
+    background: #fff3e0;
+    color: #b06000;
+  }
+</style>
+</head>
+<body>
+
+  <h1>こえの たかさ じっけん</h1>
+  <p class="sub">マイクに むかって こえを だしてみよう</p>
+
+  <!-- 音名と周波数の大きな表示 -->
+  <div class="note-display">
+    <div class="note-name" id="noteName">---</div>
+    <div class="freq-text" id="freqText">こえを まってるよ</div>
+  </div>
+
+  <!-- 音量バー -->
+  <div class="volume-area">
+    <div class="volume-label">こえの おおきさ</div>
+    <div class="volume-bar-outer">
+      <div class="volume-bar-inner" id="volumeBar"></div>
+    </div>
+  </div>
+
+  <button class="big-btn" id="startBtn">🎤 マイクを つかう</button>
+  <button class="big-btn" id="stopBtn">⏹ とめる</button>
+
+  <div class="status" id="statusText">「マイクを つかう」を おしてね</div>
+
+<!-- Pitchy(ピッチ検出ライブラリ)をCDNから読み込む。
+     type="module"のJavaScriptの中でimportする方式を使う。
+     読み込みに失敗した場合は、下の自己相関法(自前実装)に自動で切り替わる -->
+<script type="module">
+/* =========================================================
+   こえの たかさ じっけん(工程2)【最重要】
+   ・マイクの音をWeb Audio API(ブラウザ標準の音の仕組み)で取り込む
+   ・声の高さ(ピッチ)をPitchyライブラリで解析
+   ・Pitchyが読み込めない場合は「自己相関法」という計算方式で自前解析
+   ・録音音声は端末の中だけで処理し、外部には一切送信しない
+   ========================================================= */
+
+// ---------- Pitchyの読み込み(失敗しても止まらないようにtryで包む) ----------
+let PitchDetector = null; // Pitchyの解析器クラス。読み込めなければnullのまま
+let usingFallback = false; // 自前実装(自己相関法)を使っているかどうか
+
+try {
+  // esm.shというCDNからPitchyを読み込む
+  const pitchyModule = await import("https://esm.sh/pitchy@4");
+  PitchDetector = pitchyModule.PitchDetector;
+} catch (e) {
+  // 読み込み失敗 → 自前実装に切り替える(画面にも小さく表示する)
+  usingFallback = true;
+  console.log("Pitchyの読み込みに失敗したため、自己相関法(自前実装)を使います", e);
+}
+
+// ---------- 画面の部品を取得 ----------
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+const noteName = document.getElementById("noteName");
+const freqText = document.getElementById("freqText");
+const volumeBar = document.getElementById("volumeBar");
+const statusText = document.getElementById("statusText");
+
+// ---------- 音の解析に使う変数 ----------
+let audioContext = null;   // 音を扱う装置の本体
+let analyserNode = null;   // マイクの波形を取り出すための部品
+let mediaStream = null;    // マイクからの音の流れ(あとで止めるために保持)
+let detector = null;       // Pitchyの解析器(毎回作らず使い回す)
+let inputBuffer = null;    // 波形データを入れる箱(使い回してメモリ節約)
+let isRunning = false;     // 解析中かどうか
+let animationId = null;    // 画面更新の予約番号(停止時に取り消すため)
+
+// 検出する声の高さの範囲(Hz)。
+// 大人の低い声(約80Hz)〜子どもの高い声(約1000Hz)までカバーする
+const MIN_FREQ = 70;
+const MAX_FREQ = 1050;
+
+// 音量がこの値より小さいときは「無音」とみなして判定しない(誤検出防止)
+const VOLUME_THRESHOLD = 0.01;
+
+// Pitchyの「確からしさ」がこの値より低いときは雑音とみなして表示しない
+const CLARITY_THRESHOLD = 0.85;
+
+// ---------- 周波数 → 音名(ド、レ、ミ…)に変換する仕組み ----------
+// 音楽では「ラ=440Hz」が基準。そこから半音いくつ分ズレているかを計算すると音名が分かる
+const NOTE_NAMES_JP = ["ド", "ド#", "レ", "レ#", "ミ", "ファ", "ファ#", "ソ", "ソ#", "ラ", "ラ#", "シ"];
+
+function frequencyToNoteName(freq) {
+  // 440Hz(ラ)を基準に、半音単位の番号(MIDIノート番号という世界共通の番号)を計算
+  // 12半音で1オクターブ、という音楽のルールを数式にしたもの
+  const midiNumber = Math.round(12 * Math.log2(freq / 440) + 69);
+  const noteIndex = ((midiNumber % 12) + 12) % 12; // 0=ド、1=ド#…になるよう調整
+  const octave = Math.floor(midiNumber / 12) - 1;  // 何オクターブ目か(参考表示用)
+  return { name: NOTE_NAMES_JP[noteIndex], octave: octave };
+}
+
+// ---------- 自己相関法(Pitchyが使えないときの予備の解析方法) ----------
+// 波形を少しずつずらして重ね、一番よく重なる「ずらし幅」から音の高さを計算する
+function autoCorrelate(buffer, sampleRate) {
+  const n = buffer.length;
+
+  // まず音量(RMS=波の平均的な大きさ)を計算。小さすぎたら無音として扱う
+  let rms = 0;
+  for (let i = 0; i < n; i++) rms += buffer[i] * buffer[i];
+  rms = Math.sqrt(rms / n);
+  if (rms < VOLUME_THRESHOLD) return { freq: -1, clarity: 0 };
+
+  // 調べる「ずらし幅」の範囲を、検出したい周波数の範囲から決める
+  const minLag = Math.floor(sampleRate / MAX_FREQ);
+  const maxLag = Math.floor(sampleRate / MIN_FREQ);
+
+  let bestLag = -1;
+  let bestCorrelation = 0;
+
+  // ずらし幅を1つずつ試し、波形同士の「重なり具合(相関)」を計算する
+  for (let lag = minLag; lag <= maxLag && lag < n; lag++) {
+    let correlation = 0;
+    for (let i = 0; i < n - lag; i++) {
+      correlation += buffer[i] * buffer[i + lag];
+    }
+    correlation = correlation / (n - lag);
+    if (correlation > bestCorrelation) {
+      bestCorrelation = correlation;
+      bestLag = lag;
+    }
+  }
+
+  if (bestLag === -1) return { freq: -1, clarity: 0 };
+
+  // 相関の強さを0〜1の「確からしさ」に変換(雑音だと低くなる)
+  const clarity = bestCorrelation / (rms * rms);
+
+  return { freq: sampleRate / bestLag, clarity: Math.min(clarity, 1) };
+}
+
+// ---------- マイク開始 ----------
+startBtn.addEventListener("click", async () => {
+  try {
+    statusText.classList.remove("error");
+    statusText.textContent = "マイクの じゅんびちゅう…";
+
+    // AudioContext(音の装置)はユーザーのタップの中で作る(iPhone Safari対策)
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AudioContextClass();
+    if (audioContext.state === "suspended") {
+      await audioContext.resume();
+    }
+
+    // マイクの使用許可をブラウザに求める(許可ダイアログが出る)
+    // echoCancellation等をオフにすると、歌声がそのまま入りやすくなる
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
+
+    // マイクの音をAnalyser(波形の取り出し口)につなぐ
+    const source = audioContext.createMediaStreamSource(mediaStream);
+    analyserNode = audioContext.createAnalyser();
+    analyserNode.fftSize = 2048; // 一度に取り出す波形の長さ(2048個の点)
+    source.connect(analyserNode);
+    // 注意:スピーカー(destination)にはつながない=自分の声がスピーカーから返ってこない
+
+    // 波形データを入れる箱を1回だけ作って使い回す
+    inputBuffer = new Float32Array(analyserNode.fftSize);
+
+    // Pitchyが使える場合は解析器を用意
+    if (PitchDetector) {
+      detector = PitchDetector.forFloat32Array(analyserNode.fftSize);
+    }
+
+    isRunning = true;
+    startBtn.style.display = "none";
+    stopBtn.style.display = "block";
+    statusText.textContent = usingFallback
+      ? "かいせきちゅう(よびの ほうしきで うごいてるよ)"
+      : "こえを だしてみよう!";
+
+    updateLoop(); // 解析ループ開始
+  } catch (err) {
+    // マイク許可を拒否された場合など。やさしい言葉でエラーを伝える
+    console.log("マイクエラー:", err);
+    statusText.classList.add("error");
+    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+      statusText.textContent = "マイクが つかえなかったよ。ブラウザの せっていで マイクを「きょか」に してから、もういちど ためしてね";
+    } else if (err.name === "NotFoundError") {
+      statusText.textContent = "マイクが みつからなかったよ。マイクの ついた たんまつで ためしてね";
+    } else {
+      statusText.textContent = "マイクの じゅんびで こまったことが おきたよ。ページを ひらきなおして もういちど ためしてね";
+    }
+  }
+});
+
+// ---------- 解析ループ(1秒間に約60回、画面を更新する) ----------
+function updateLoop() {
+  if (!isRunning) return;
+
+  // マイクの最新の波形データを箱に取り出す
+  analyserNode.getFloatTimeDomainData(inputBuffer);
+
+  // 音量(RMS)を計算してバーに反映
+  let rms = 0;
+  for (let i = 0; i < inputBuffer.length; i++) {
+    rms += inputBuffer[i] * inputBuffer[i];
+  }
+  rms = Math.sqrt(rms / inputBuffer.length);
+  // 音量バーの幅(%)に変換。声の音量は小さい数値なので約12倍して見やすくする
+  const volumePercent = Math.min(rms * 1200, 100);
+  volumeBar.style.width = volumePercent + "%";
+
+  // ---- ピッチ(声の高さ)の解析 ----
+  let freq = -1;
+  let clarity = 0;
+
+  if (rms >= VOLUME_THRESHOLD) {
+    if (detector) {
+      // Pitchyで解析。[周波数, 確からしさ(0〜1)] が返ってくる
+      const [pitchFreq, pitchClarity] = detector.findPitch(inputBuffer, audioContext.sampleRate);
+      freq = pitchFreq;
+      clarity = pitchClarity;
+    } else {
+      // 予備の自己相関法で解析
+      const result = autoCorrelate(inputBuffer, audioContext.sampleRate);
+      freq = result.freq;
+      clarity = result.clarity;
+    }
+  }
+
+  // ---- 画面表示の判定 ----
+  // 「音量が十分」「確からしさが高い」「人の声の範囲内」の3つ全部を満たすときだけ表示。
+  // 1つでも欠けたら「---」にする(雑音の誤検出を画面に出さないため)
+  if (
+    freq > 0 &&
+    clarity >= CLARITY_THRESHOLD &&
+    freq >= MIN_FREQ &&
+    freq <= MAX_FREQ
+  ) {
+    const note = frequencyToNoteName(freq);
+    noteName.textContent = note.name;
+    freqText.textContent = Math.round(freq) + " Hz(たかさレベル " + note.octave + ")";
+  } else {
+    noteName.textContent = "---";
+    freqText.textContent = "こえを まってるよ";
+  }
+
+  // 次の画面更新を予約(requestAnimationFrame=画面の書き換えに合わせて呼ばれる仕組み)
+  animationId = requestAnimationFrame(updateLoop);
+}
+
+// ---------- 停止 ----------
+stopBtn.addEventListener("click", () => {
+  isRunning = false;
+
+  // 画面更新の予約を取り消す
+  if (animationId) cancelAnimationFrame(animationId);
+
+  // マイクを完全に止める(カメラ・マイクの使用中マークも消える)
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
+    mediaStream = null;
+  }
+
+  // 音の装置も閉じてリセット
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+
+  // 画面を初期状態に戻す
+  noteName.textContent = "---";
+  freqText.textContent = "こえを まってるよ";
+  volumeBar.style.width = "0%";
+  startBtn.style.display = "block";
+  stopBtn.style.display = "none";
+  statusText.classList.remove("error");
+  statusText.textContent = "とめたよ。もういちど やるときは「マイクを つかう」を おしてね";
+});
+</script>
+
+</body>
+</html>
