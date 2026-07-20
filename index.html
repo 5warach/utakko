@@ -200,7 +200,7 @@
     flex-direction: column;
     align-items: center;
   }
-  #roadCanvas, #practiceRoadCanvas {
+  #roadCanvas, #practiceRoadCanvas, #reviewRoadCanvas {
     width: 100%;
     border-radius: 12px;
     background: linear-gradient(180deg, #eaf7ff 0%, #fdf3ff 100%);
@@ -527,7 +527,31 @@
       <span id="teamCompareText"></span>
     </div>
     <button class="big-btn glow-btn" id="challengeRetryBtn">🎤 もういちど 2にんで うたう</button>
+    <!-- 【ふりかえり機能追加】いちばん目立つのは上の再挑戦ボタンのまま。これは中サイズにする -->
+    <button class="mid-btn" id="challengeReviewBtn">🛤️ ふたりの うたを ふりかえる</button>
     <button class="text-btn" id="challengeEndBtn">おやこチャレンジを おわる</button>
+  </div>
+
+  <!-- ========== 画面9(ふりかえり機能追加):おやこの ふりかえり ========== -->
+  <!-- おとな・こどもの音の道リプレイを「1人ずつ順番に」見せる画面。
+       2人の道を同じ画面に並べて比較することは絶対にしない(勝ち負けの構図を作らないため)。
+       点数はここでは再表示せず、道と⭐、よかったところ1つだけを見せる。 -->
+  <div class="screen" id="screenChallengeReview">
+    <div class="feedback-box" style="text-align:center;">
+      <span class="label">🛤️ ふたりの うたを ふりかえろう</span>
+      <span id="reviewTurnLabel" style="display:block; font-size:20px; font-weight:bold; color:#ff7a59;">おとなの みち</span>
+    </div>
+    <div class="road-wrap" id="reviewRoadWrap">
+      <canvas id="reviewRoadCanvas"></canvas>
+      <button class="small-btn" id="reviewReplayBtn">▶️ もういちど みる</button>
+    </div>
+    <div class="feedback-box">
+      <span class="label">🌟 よかったところ</span>
+      <span id="reviewGoodPoint"></span>
+    </div>
+    <!-- おとなの道を見ているときだけ表示。こどもの道を見ているときは表示しない(その先は「もどる」のみ) -->
+    <button class="mid-btn" id="reviewNextBtn">つぎへ(こどもの みち)🧒</button>
+    <button class="text-btn" id="reviewBackBtn">チームスコアへ もどる</button>
   </div>
 
 <script type="module">
@@ -608,7 +632,9 @@ const screens = {
   // 【工程6追加】おやこチャレンジ用の3画面
   challengeTurnResult: document.getElementById("screenChallengeTurnResult"),
   challengeHandoff: document.getElementById("screenChallengeHandoff"),
-  challengeTeam: document.getElementById("screenChallengeTeam")
+  challengeTeam: document.getElementById("screenChallengeTeam"),
+  // 【ふりかえり機能追加】
+  challengeReview: document.getElementById("screenChallengeReview")
 };
 const listenBtn = document.getElementById("listenBtn");
 const singBtn = document.getElementById("singBtn");
@@ -671,6 +697,14 @@ const teamCompareBox = document.getElementById("teamCompareBox");
 const teamCompareText = document.getElementById("teamCompareText");
 const challengeRetryBtn = document.getElementById("challengeRetryBtn");
 const challengeEndBtn = document.getElementById("challengeEndBtn");
+// 【ふりかえり機能追加】
+const challengeReviewBtn = document.getElementById("challengeReviewBtn");
+const reviewTurnLabel = document.getElementById("reviewTurnLabel");
+const reviewRoadCanvas = document.getElementById("reviewRoadCanvas");
+const reviewReplayBtn = document.getElementById("reviewReplayBtn");
+const reviewGoodPoint = document.getElementById("reviewGoodPoint");
+const reviewNextBtn = document.getElementById("reviewNextBtn");
+const reviewBackBtn = document.getElementById("reviewBackBtn");
 // 練習用の音量の波バー(本番より少なめの10本)
 const PRACTICE_WAVE_BAR_COUNT = 10;
 const practiceWaveBars = [];
@@ -727,6 +761,13 @@ let parentScore = null;             // おとなの点数(このラウンドぶ�
 let childScore = null;              // こどもの点数(このラウンドぶん)
 let previousTeamTotal = null;       // 前回のチームスコア(再挑戦の差分表示に使う)
 let challengeChildOctaveUp = false; // 「こどものたかさ」ボタンのON/OFF(お手本の聞こえ方だけを変える)
+
+// 【ふりかえり機能追加】おとな・こどもそれぞれの録音記録(音の道リプレイ用)。
+// 端末のメモリ内だけで保持し、localStorageには保存しない。チャレンジ終了時に破棄する
+let challengeParentData = null; // { samples, startTime, result }
+let challengeChildData = null;  // { samples, startTime, result }
+let challengeReviewTurn = null; // ふりかえり画面で今どちらを見ているか("parent" または "child")
+let reviewRoadAnimId = null;    // ふりかえり画面のリプレイ用アニメーションID
 
 // ---------- 難易度(やさしい/ふつう) ----------
 // やさしい:小さい子向け。合格の幅を広げ、点数の下限も高くする
@@ -1250,6 +1291,25 @@ function centsToY(cents, height) {
 // お手本3音の「道の高さ」(ドを0セントとして、レ=+200、ミ=+400)
 const RAIL_CENTS = [0, 200, 400];
 
+// 【ふりかえり機能追加】任意の録音記録・開始時刻から道データを作る(prepareRoadDataの汎用版)。
+// おやこチャレンジの「おとなの みち」「こどもの みち」を、それぞれの録音記録から描くために使う。
+// 既存のprepareRoadData(本番の結果画面用)はそのまま残し、動作を変えない
+function prepareRoadDataFrom(samples, startTime) {
+  const segLen = (RECORD_SECONDS - startTime) / 3;
+  return samples
+    .filter(s => s.time >= startTime)
+    .map(s => {
+      let segIdx = Math.floor((s.time - startTime) / segLen);
+      if (segIdx > 2) segIdx = 2;
+      const diff = freqToCentsDiff(s.freq, TARGET_NOTES[segIdx].freq);
+      return {
+        time: s.time - startTime,
+        cents: RAIL_CENTS[segIdx] + diff,
+        matched: Math.abs(diff) <= LEVELS[currentLevel].fullBand
+      };
+    });
+}
+
 // 録音サンプルを描画用に変換する(セント値に直し、オクターブ差は折りたたむ)
 function prepareRoadData(samples) {
   // 【今回修正】採点(calculateScore)と同じく、歌い出し(scoringStartTime)から3等分する
@@ -1277,9 +1337,24 @@ function prepareRoadData(samples) {
 function drawRoadOnCanvas(canvas, cssHeight, rails, durationSecArg, data, progress) {
   const dpr = window.devicePixelRatio || 1;
   const cssWidth = canvas.clientWidth;
-  canvas.width = cssWidth * dpr;
-  canvas.height = cssHeight * dpr;
+  // 【バグ修正】clientWidthが0(まだ画面に表示されていない等)のときは描画しない。
+  // 0×dprでcanvasを作り直すと、その後の描画がずっと壊れたままになるため
+  if (cssWidth <= 0) return;
+  // 【バグ修正】前回と同じサイズなら、canvas.width/heightを設定し直さない。
+  // CSSでサイズが固定されていないcanvasに対して毎フレームwidthを設定し直すと、
+  // 次のフレームのclientWidthが「dpr倍されたあとの自分自身の幅」を読んでしまい、
+  // 描画のたびにcanvasが際限なく巨大化して、最後には描画が失敗し空白になる(今回のバグの原因)。
+  // これを入れておけば、CSSのサイズ指定が万一漏れていても無限に膨張しなくなる
+  const targetWidth = Math.round(cssWidth * dpr);
+  const targetHeight = Math.round(cssHeight * dpr);
+  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+  }
   const ctx2d = canvas.getContext("2d");
+  // canvas.width/heightを設定し直さなかった回でも、前回分の拡大率が積み重ならないよう、
+  // 描画のたびに一度リセットしてからscaleをかけ直す
+  ctx2d.setTransform(1, 0, 0, 1, 0, 0);
   ctx2d.scale(dpr, dpr);
   ctx2d.clearRect(0, 0, cssWidth, cssHeight);
 
@@ -1522,6 +1597,8 @@ challengeStartBtn.addEventListener("click", () => {
   challengeActive = true;
   parentScore = null;
   childScore = null;
+  challengeParentData = null; // 【ふりかえり機能追加】前回ぶんの記録は残さない
+  challengeChildData = null;  // 【ふりかえり機能追加】
   startChallengeTurnScreen("parent");
 });
 
@@ -1542,11 +1619,21 @@ function handleChallengeTurnResult(result) {
   }
   startStatus.classList.remove("error");
 
+  // 【ふりかえり機能追加】この人の録音記録を、あとで「ふりかえり」画面の道リプレイに使うため控えておく。
+  // 保存先は端末のメモリ内(JS変数)だけで、localStorageや外部への送信はしない
+  const turnData = {
+    samples: pitchSamples.slice(),
+    startTime: scoringStartTime,
+    result: result
+  };
+
   if (challengeTurn === "parent") {
     parentScore = result.total;
+    challengeParentData = turnData; // 【ふりかえり機能追加】
     challengeResultLabel.textContent = "おとなの けっか";
   } else {
     childScore = result.total;
+    challengeChildData = turnData; // 【ふりかえり機能追加】
     challengeResultLabel.textContent = "こどもの けっか";
   }
   challengeResultEmoji.textContent = result.total >= 60 ? "🎉" : "👏";
@@ -1608,6 +1695,9 @@ challengeEndBtn.addEventListener("click", () => {
   challengeTurn = null;
   previousTeamTotal = null;
   challengeChildOctaveUp = false;
+  challengeParentData = null; // 【ふりかえり機能追加】チャレンジ終了時に破棄する
+  challengeChildData = null;  // 【ふりかえり機能追加】
+  if (reviewRoadAnimId) cancelAnimationFrame(reviewRoadAnimId); // 【ふりかえり機能追加】動いていれば止める
   childHeightBtn.textContent = "🧒 こどものたかさ:OFF";
   challengeBanner.style.display = "none";
   childHeightBtn.style.display = "none";
@@ -1615,6 +1705,72 @@ challengeEndBtn.addEventListener("click", () => {
   showScreen("start");
   startStatus.classList.remove("error");
   startStatus.textContent = "まずは おてほんを きいてみよう";
+});
+
+/* =========================================================
+   おやこの ふりかえり(ふりかえり機能追加)
+   ・おとな・こどもの音の道リプレイを「1人ずつ順番に」見せる
+   ・2人の道を同じ画面に並べて比較することは絶対にしない(勝ち負けの構図を作らないため)
+   ・点数はここには出さない。道と⭐、よかったところ1つだけを見せる
+   ・録音記録(challengeParentData/challengeChildData)は端末のメモリ内だけで保持し、
+     localStorageには保存しない。チャレンジ終了時に破棄する(上のchallengeEndBtnで実施)
+   ========================================================= */
+
+// 「🛤️ ふたりの うたを ふりかえる」ボタン:まずは、おとなの みちから見せる
+challengeReviewBtn.addEventListener("click", () => {
+  if (!challengeParentData) return; // 念のための安全策(データがなければ何もしない)
+  setupChallengeReviewScreen("parent");
+});
+
+// ふりかえり画面を、指定した人(parent/child)の道で組み立てる
+function setupChallengeReviewScreen(turn) {
+  challengeReviewTurn = turn;
+  const data = turn === "parent" ? challengeParentData : challengeChildData;
+  if (!data) return; // まだその人の記録がない場合は何もしない(こどもが未挑戦のときの保険)
+
+  reviewTurnLabel.textContent = turn === "parent" ? "おとなの みち" : "こどもの みち";
+  // 【設計どおり】直すポイントは出さず、「よかったところ」だけをmakeFeedbackから流用する
+  reviewGoodPoint.textContent = makeFeedback(data.result).good;
+  // おとなの道を見ているときだけ「つぎへ」を出す。こどもの道のときは「もどる」だけにする
+  reviewNextBtn.style.display = turn === "parent" ? "block" : "none";
+
+  showScreen("challengeReview");
+  setTimeout(playReviewRoadReplay, 400); // 結果画面と同じく、切り替わった少し後に自動再生
+}
+
+// ふりかえり画面の道リプレイを再生する(「もういちど みる」でも同じ関数を使う)
+function playReviewRoadReplay() {
+  if (reviewRoadAnimId) cancelAnimationFrame(reviewRoadAnimId);
+  const data = challengeReviewTurn === "parent" ? challengeParentData : challengeChildData;
+  if (!data) return;
+
+  const roadData = prepareRoadDataFrom(data.samples, data.startTime);
+  const durationSec = RECORD_SECONDS - data.startTime;
+  const rails = TARGET_NOTES.map((n, i) => ({ cents: RAIL_CENTS[i], label: n.name }));
+  const startMs = performance.now();
+  const durationMs = durationSec * 1000;
+
+  function frame(nowMs) {
+    const progress = Math.min((nowMs - startMs) / durationMs, 1);
+    drawRoadOnCanvas(reviewRoadCanvas, 220, rails, durationSec, roadData, progress);
+    if (progress < 1) {
+      reviewRoadAnimId = requestAnimationFrame(frame);
+    }
+  }
+  reviewRoadAnimId = requestAnimationFrame(frame);
+}
+
+reviewReplayBtn.addEventListener("click", playReviewRoadReplay);
+
+// 「つぎへ(こどもの みち)」:おとなの道を見終わったら、こどもの道へ切り替える
+reviewNextBtn.addEventListener("click", () => {
+  setupChallengeReviewScreen("child");
+});
+
+// 「チームスコアへ もどる」:ふりかえりを終えて、チームスコア発表画面に戻る
+reviewBackBtn.addEventListener("click", () => {
+  if (reviewRoadAnimId) cancelAnimationFrame(reviewRoadAnimId);
+  showScreen("challengeTeam");
 });
 
 /* =========================================================
