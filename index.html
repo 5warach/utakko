@@ -200,7 +200,7 @@
     flex-direction: column;
     align-items: center;
   }
-  #roadCanvas {
+  #roadCanvas, #practiceRoadCanvas {
     width: 100%;
     border-radius: 12px;
     background: linear-gradient(180deg, #eaf7ff 0%, #fdf3ff 100%);
@@ -257,6 +257,101 @@
     text-align: center;
     font-weight: bold;
   }
+
+  /* 【工程5追加】いちばん押してほしいボタンを光らせて目立たせる */
+  .glow-btn {
+    animation: glowPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes glowPulse {
+    0%, 100% { box-shadow: 0 4px 0 rgba(0,0,0,0.15), 0 0 0 rgba(255,183,77,0); }
+    50% { box-shadow: 0 4px 0 rgba(0,0,0,0.15), 0 0 22px rgba(255,183,77,0.9); }
+  }
+  /* 【工程5追加】文字だけの控えめな戻るボタン(目立たせすぎない) */
+  .text-btn {
+    height: 44px;
+    border: none;
+    background: transparent;
+    color: #999;
+    font-size: 15px;
+    text-decoration: underline;
+    cursor: pointer;
+    margin-bottom: 6px;
+  }
+  .center-row { justify-content: center; }
+  /* 【工程5追加】1音まねっこ練習の星表示 */
+  .mimic-star { font-size: 34px; margin: 0 6px; }
+  /* 【工程5追加】ロングトーン練習の星表示 */
+  .practice-stars-big {
+    font-size: 44px;
+    margin: 14px 0 4px 0;
+    text-align: center;
+  }
+  .practice-hint {
+    color: #999;
+    font-size: 14px;
+    text-align: center;
+    margin: 0 0 10px 0;
+  }
+  /* 【修正1追加】道に乗っていた時間がその場でたまるゲージ */
+  .practice-gauge {
+    width: 100%;
+    height: 18px;
+    background: #eee;
+    border-radius: 9px;
+    overflow: hidden;
+    margin: 10px 0 6px 0;
+  }
+  .practice-gauge-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ffd35c, #ffb300);
+  }
+  /* 【修正2追加】ふうせんゲーム(ロングトーン練習) */
+  .balloon-track {
+    position: relative;
+    width: 100%;
+    height: 64px;
+    background: linear-gradient(180deg, #eaf7ff 0%, #fdf3ff 100%);
+    border-radius: 32px;
+    margin: 12px 0 6px 0;
+    overflow: hidden;
+  }
+  .balloon-goal {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 30px;
+  }
+  .balloon-icon {
+    position: absolute;
+    left: 5%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 34px;
+    transition: left 0.15s linear;
+  }
+  /* 【修正3追加】1回ごとのごほうび表示 */
+  .practice-reward {
+    font-size: 19px;
+    font-weight: bold;
+    color: #ff9f43;
+    text-align: center;
+    min-height: 26px;
+    margin: 4px 0;
+  }
+
+  .practice-countdown {
+    font-size: 56px;
+    font-weight: bold;
+    color: #ff7a59;
+    min-height: 0;
+    line-height: 1.3;
+    text-align: center;
+    margin: 2px 0;
+  }
+  /* 【修正3】練習画面の波は本番より小さめにする */
+  .wave-area-small { height: 50px; margin: 8px 0 14px 0; }
 </style>
 </head>
 <body>
@@ -304,6 +399,11 @@
   <div class="screen" id="screenResult">
     <div class="celebrate" id="celebrateEmoji"></div>
     <div class="score-big"><span id="scoreNum">0</span><span class="score-unit">てん</span></div>
+    <!-- 【工程5追加】練習をはさんで再挑戦したときだけ、1回目との比較を表示 -->
+    <div class="feedback-box" id="compareBox" style="display:none;">
+      <span class="label">📈 きろくの へんか</span>
+      <span id="compareText"></span>
+    </div>
     <!-- 音ごとの結果(⭐=ばっちり、☆=おしい)。どの音を直せばいいか一目で分かる -->
     <div class="note-stars" id="noteStars"></div>
     <!-- 音の道リプレイ:お手本=道、自分の声=ボール。高い音ほど上 -->
@@ -319,8 +419,60 @@
       <span class="label">🎯 つぎの ちょうせん</span>
       <span id="nextPoint"></span>
     </div>
-    <button class="big-btn" id="retryBtn">🎤 もういちど うたう</button>
-    <button class="mid-btn" id="backBtn">おてほんを きく</button>
+    <!-- 【工程5追加】設計書どおり、いちばん大きく光らせて目立たせる -->
+    <button class="big-btn glow-btn" id="practiceBtn">🎮 おすすめ れんしゅうを やってみる</button>
+    <button class="mid-btn" id="retryBtn">🎤 もういちど うたう</button>
+    <button class="text-btn" id="backBtn">おてほんを きく</button>
+  </div>
+
+  <!-- ========== 画面5(工程5追加):弱点にあわせた おすすめ練習 ========== -->
+  <div class="screen" id="screenWeakness">
+    <div class="celebrate" id="weaknessEmoji">🎯</div>
+    <div class="feedback-box">
+      <span class="label">🎯 きょうの ちょうせん</span>
+      <span id="weaknessTitle"></span>
+    </div>
+
+    <!-- 「ひくい/たかい/この音だけ」用:1音まねっこ練習の表示。丸には的の音名だけを表示する -->
+    <div id="mimicArea" style="display:none; width:100%;">
+      <div class="notes-row center-row">
+        <div class="note-circle c1" id="mimicCircle">レ</div>
+      </div>
+      <!-- 【修正1】道に乗っている時間がその場でたまっていくゲージ -->
+      <div class="practice-gauge"><div class="practice-gauge-fill" id="mimicGaugeFill"></div></div>
+      <div class="note-stars center-row" id="mimicStars"></div>
+      <p class="practice-hint">おてほんと おなじ たかさで「ラー」と うたってみよう(3かい ちょうせん)</p>
+    </div>
+
+    <!-- 「ゆれている/バランスがいいね」用:【修正2】ふうせんゲーム(設計書8章)に変更 -->
+    <div id="longtoneArea" style="display:none; width:100%;">
+      <div class="balloon-track" id="balloonTrack">
+        <div class="balloon-goal">🚩</div>
+        <div class="balloon-icon" id="balloonIcon">🎈</div>
+      </div>
+      <p class="practice-hint">こえを「ラー」で のばして、ふうせんを ゴールまで とばそう!</p>
+    </div>
+
+    <!-- 【修正1】練習中、声にあわせてボールがリアルタイムに動く「音の道」(まねっこ専用) -->
+    <div class="road-wrap" id="practiceRoadWrap" style="display:none;">
+      <canvas id="practiceRoadCanvas"></canvas>
+    </div>
+
+    <!-- 【修正3】1回ごとのごほうび表示(例:「みちに のってた じかん 1.8びょう!」) -->
+    <div class="practice-reward" id="practiceReward"></div>
+
+    <!-- 【修正3以前】画面いっぱいのカウントダウン画面には切り替えず、ここに小さく表示する -->
+    <div class="practice-countdown" id="practiceCountdown"></div>
+    <!-- 録音中は本番と同じ「こえが とどいてるよ」の波を小さく表示する -->
+    <div class="wave-area wave-area-small" id="practiceWaveArea" style="display:none;"></div>
+
+    <div class="guide-text" id="practiceStatus">じゅんびが できたら はじめよう</div>
+    <button class="mid-btn" id="practiceListenBtn">▶️ おてほんを きく</button>
+    <button class="big-btn" id="practiceStartBtn">🎤 れんしゅう スタート!</button>
+
+    <!-- 練習が終わると、いちばん大きなボタンでもう一度の挑戦へ誘導する -->
+    <button class="big-btn glow-btn" id="practiceRetryBtn" style="display:none;">🎤 もういちど うたって きろく こうしんに ちょうせん!</button>
+    <button class="text-btn" id="weaknessBackBtn">けっかがめんへ もどる</button>
   </div>
 
 <script type="module">
@@ -392,7 +544,8 @@ const screens = {
   start: document.getElementById("screenStart"),
   countdown: document.getElementById("screenCountdown"),
   recording: document.getElementById("screenRecording"),
-  result: document.getElementById("screenResult")
+  result: document.getElementById("screenResult"),
+  weakness: document.getElementById("screenWeakness") // 【工程5追加】
 };
 const listenBtn = document.getElementById("listenBtn");
 const singBtn = document.getElementById("singBtn");
@@ -410,6 +563,40 @@ const scoreNum = document.getElementById("scoreNum");
 const celebrateEmoji = document.getElementById("celebrateEmoji");
 const goodPoint = document.getElementById("goodPoint");
 const nextPoint = document.getElementById("nextPoint");
+// 【工程5追加】比較表示・おすすめ練習ボタン
+const compareBox = document.getElementById("compareBox");
+const compareText = document.getElementById("compareText");
+const practiceBtn = document.getElementById("practiceBtn");
+// 【工程5追加】弱点練習画面の部品
+const weaknessEmoji = document.getElementById("weaknessEmoji");
+const weaknessTitle = document.getElementById("weaknessTitle");
+const mimicArea = document.getElementById("mimicArea");
+const mimicCircle = document.getElementById("mimicCircle");
+const mimicStars = document.getElementById("mimicStars");
+const longtoneArea = document.getElementById("longtoneArea");
+const practiceStatus = document.getElementById("practiceStatus");
+const practiceListenBtn = document.getElementById("practiceListenBtn");
+const practiceStartBtn = document.getElementById("practiceStartBtn");
+const practiceRetryBtn = document.getElementById("practiceRetryBtn");
+const weaknessBackBtn = document.getElementById("weaknessBackBtn");
+// 【今回追加】ゲージ・ふうせんゲーム・ごほうび表示の部品
+const mimicGaugeFill = document.getElementById("mimicGaugeFill");
+const balloonIcon = document.getElementById("balloonIcon");
+const practiceReward = document.getElementById("practiceReward");
+// 【修正1】練習中、声にあわせてボールがリアルタイムに動く道のCanvas
+const practiceRoadWrap = document.getElementById("practiceRoadWrap");
+const practiceRoadCanvas = document.getElementById("practiceRoadCanvas");
+const practiceCountdown = document.getElementById("practiceCountdown");
+const practiceWaveArea = document.getElementById("practiceWaveArea");
+// 練習用の音量の波バー(本番より少なめの10本)
+const PRACTICE_WAVE_BAR_COUNT = 10;
+const practiceWaveBars = [];
+for (let i = 0; i < PRACTICE_WAVE_BAR_COUNT; i++) {
+  const bar = document.createElement("div");
+  bar.className = "wave-bar";
+  practiceWaveArea.appendChild(bar);
+  practiceWaveBars.push(bar);
+}
 
 // 録音中の音量の波バー(15本)をあらかじめ作っておく
 const WAVE_BAR_COUNT = 15;
@@ -432,6 +619,18 @@ let isRecording = false;
 let recordStartTime = 0;
 // 録音中に集めるピッチの記録。{ time: 録音開始からの秒数, freq: 周波数 } の配列
 let pitchSamples = [];
+
+// 【工程5追加】直前の採点結果(弱点判定・比較表示に使う。端末内のみで保持し、外部には送らない)
+let lastResult = null;
+// 【工程5追加】「おすすめ練習」を始めた時点の点数。ここと再挑戦後の点数を比べて「68てん→76てん!」を出す
+let previousTotal = null;
+// 【工程5追加】いま案内している弱点の種類
+let currentWeakness = null;
+// 【今回追加】1回前の練習の「のっていた時間」。再挑戦時の伸び("+0.5びょう!")の表示に使う
+let lastMimicRoundTime = null;
+let lastLongtoneTime = null;
+// 【今回追加】画面をはなれたときに、動いているライブ練習ループを止めるためのフラグ
+let practiceCancelled = false;
 
 // ---------- 難易度(やさしい/ふつう) ----------
 // やさしい:小さい子向け。合格の幅を広げ、点数の下限も高くする
@@ -599,7 +798,11 @@ singBtn.addEventListener("click", async () => {
 });
 
 // ---------- カウントダウン(3→2→1→スタート) ----------
-function runCountdown(from) {
+// 【工程5修正】完了時の処理を引数で渡せるようにした。
+// これにより「本番の録音」と「おすすめ練習」で、まったく同じ見た目・同じペースの
+// カウントダウンを使い回せる(以前は練習だけ独自の速いカウントで違和感があった)
+function runCountdown(from, onComplete) {
+  const complete = onComplete || startRecording; // 何も指定しなければ今までどおり本番の録音へ
   let count = from;
   countdownNum.textContent = count;
   // カウントに合わせてポン、と軽い音を鳴らす(準備の合図)
@@ -614,7 +817,7 @@ function runCountdown(from) {
       clearInterval(timer);
       countdownNum.textContent = "🎵";
       playPianoNote(880, 0.3); // スタートの合図は少し高い音
-      startRecording();
+      complete();
     }
   }, 1000);
 }
@@ -809,6 +1012,21 @@ function calculateScore(samples) {
   };
 }
 
+// ---------- 【工程5追加・不具合修正】ズレの「方向」を安全に判定する ----------
+// freqToCentsDiffは1オクターブ(1200セント)ちょうどのズレを「同じ音」として折りたたんでいる。
+// この折りたたみのせいで、実際のズレが600セント付近(半音6個ぶん=トライトーンあたり)のときに
+// 「たかく」と「ひくく」の向きが逆に見えてしまうことがあった(進捗ログの未解決課題)。
+// → ズレが500セントを超える場合は、方向を言わずに「おなじたかさで」とだけ案内する形にして、
+//   逆向きのアドバイスを出してしまう事故を防ぐ。
+const DIRECTION_UNCLEAR_LIMIT = 500;
+function directionLabel(centsDiff) {
+  if (centsDiff === null || centsDiff === undefined) return null;
+  if (Math.abs(centsDiff) > DIRECTION_UNCLEAR_LIMIT) return "unclear";
+  if (centsDiff < 0) return "low";   // 声が低め→もっと「たかく」してほしい
+  if (centsDiff > 0) return "high";  // 声が高め→もっと「ひくく」してほしい
+  return "match";
+}
+
 // ---------- フィードバック文の生成(良い点1つ+次の挑戦1つ。否定語は使わない) ----------
 function makeFeedback(result) {
   const segs = result.segmentResults;
@@ -836,10 +1054,18 @@ function makeFeedback(result) {
     next = "こんどは もっと ながく のばして うたってみよう!";
   } else if (segs[worstIdx].centsDiff === null) {
     next = noteNames[worstIdx] + "でも こえを だしてみよう!";
-  } else if (segs[worstIdx].centsDiff < 0) {
-    next = noteNames[worstIdx] + "を もうすこし たかく してみよう!";
   } else {
-    next = noteNames[worstIdx] + "を もうすこし ひくく してみよう!";
+    // 【工程5修正】方向があいまいなときは「たかく/ひくく」を言わず、安全な言い方にする
+    const dir = directionLabel(segs[worstIdx].centsDiff);
+    if (dir === "unclear") {
+      next = noteNames[worstIdx] + "を おてほんと おなじ たかさで うたってみよう!";
+    } else if (dir === "low") {
+      next = noteNames[worstIdx] + "を もうすこし たかく してみよう!";
+    } else if (dir === "high") {
+      next = noteNames[worstIdx] + "を もうすこし ひくく してみよう!";
+    } else {
+      next = noteNames[worstIdx] + "を もういちど たしかめてみよう!";
+    }
   }
 
   return { good, next };
@@ -884,25 +1110,29 @@ function prepareRoadData(samples) {
 }
 
 // 道とボールを描く。progress は 0〜1(リプレイの進み具合)
-function drawRoad(data, progress) {
+// 【修正2】道とボールの描画を汎用化。本番の3音の道と、練習の1音だけの道の両方で使う。
+// canvas:描く先のCanvas要素/cssHeight:高さ(px)/rails:[{cents,label}, ...]の配列
+// durationSecArg:このリプレイの時間の長さ(秒)/data:{time,cents,matched}の配列/progress:0〜1
+function drawRoadOnCanvas(canvas, cssHeight, rails, durationSecArg, data, progress) {
   const dpr = window.devicePixelRatio || 1;
-  const cssWidth = roadCanvas.clientWidth;
-  const cssHeight = 220;
-  roadCanvas.width = cssWidth * dpr;
-  roadCanvas.height = cssHeight * dpr;
-  const ctx2d = roadCanvas.getContext("2d");
+  const cssWidth = canvas.clientWidth;
+  canvas.width = cssWidth * dpr;
+  canvas.height = cssHeight * dpr;
+  const ctx2d = canvas.getContext("2d");
   ctx2d.scale(dpr, dpr);
   ctx2d.clearRect(0, 0, cssWidth, cssHeight);
 
   const pad = 14; // 左右の余白
   const w = cssWidth - pad * 2;
-  const nowTime = progress * RECORD_SECONDS;
+  const nowTime = progress * durationSecArg;
+  const segCount = rails.length;
+  const gap = segCount > 1 ? 8 : 0; // 複数区間のときだけ、区間の間にすき間を作る
 
-  // --- 道(レール)を描く。3本の水平線。通過済みで合っていた部分は金色 ---
-  for (let i = 0; i < 3; i++) {
-    const x0 = pad + (i / 3) * w;
-    const x1 = pad + ((i + 1) / 3) * w - 8;
-    const y = centsToY(RAIL_CENTS[i], cssHeight);
+  // --- 道(レール)を描く。通過済みで合っていた部分は金色 ---
+  for (let i = 0; i < segCount; i++) {
+    const x0 = pad + (i / segCount) * w;
+    const x1 = pad + ((i + 1) / segCount) * w - gap;
+    const y = centsToY(rails[i].cents, cssHeight);
 
     // ベースの道(グレー)
     ctx2d.strokeStyle = "#d8d8e0";
@@ -914,14 +1144,14 @@ function drawRoad(data, progress) {
     ctx2d.stroke();
 
     // この区間で「合っていた」時間帯を金色で上塗りする
-    const segStart = i * (RECORD_SECONDS / 3);
-    const segEnd = (i + 1) * (RECORD_SECONDS / 3);
+    const segStart = i * (durationSecArg / segCount);
+    const segEnd = (i + 1) * (durationSecArg / segCount);
     const matchedTimes = data.filter(d => d.matched && d.time >= segStart && d.time < Math.min(segEnd, nowTime));
     if (matchedTimes.length > 0) {
       ctx2d.strokeStyle = "#ffd35c";
       ctx2d.lineWidth = 10;
       matchedTimes.forEach(d => {
-        const x = pad + (d.time / RECORD_SECONDS) * w;
+        const x = pad + (d.time / durationSecArg) * w;
         ctx2d.beginPath();
         ctx2d.moveTo(Math.max(x - 3, x0), y);
         ctx2d.lineTo(Math.min(x + 3, x1), y);
@@ -941,7 +1171,7 @@ function drawRoad(data, progress) {
     ctx2d.fillStyle = "#999";
     ctx2d.font = "bold 14px sans-serif";
     ctx2d.textAlign = "left";
-    ctx2d.fillText(TARGET_NOTES[i].name, x0, y + 26);
+    ctx2d.fillText(rails[i].label, x0, y + 26);
   }
 
   // --- 自分の声の軌跡(今までに通った部分だけ線で描く) ---
@@ -951,7 +1181,7 @@ function drawRoad(data, progress) {
     ctx2d.lineWidth = 3;
     ctx2d.beginPath();
     passed.forEach((d, i) => {
-      const x = pad + (d.time / RECORD_SECONDS) * w;
+      const x = pad + (d.time / durationSecArg) * w;
       const y = centsToY(d.cents, cssHeight);
       if (i === 0) ctx2d.moveTo(x, y);
       else ctx2d.lineTo(x, y);
@@ -964,7 +1194,7 @@ function drawRoad(data, progress) {
     const last = passed[passed.length - 1];
     // 直近0.2秒以内に声があったときだけボールを表示
     if (nowTime - last.time < 0.2) {
-      const x = pad + (last.time / RECORD_SECONDS) * w;
+      const x = pad + (last.time / durationSecArg) * w;
       const y = centsToY(last.cents, cssHeight);
       ctx2d.fillStyle = last.matched ? "#ffb300" : "#ff7a59";
       ctx2d.beginPath();
@@ -978,6 +1208,12 @@ function drawRoad(data, progress) {
       ctx2d.fill();
     }
   }
+}
+
+// 本番(3音)の道は、これまでどおりの見た目で描く
+function drawRoad(data, progress) {
+  const rails = TARGET_NOTES.map((n, i) => ({ cents: RAIL_CENTS[i], label: n.name }));
+  drawRoadOnCanvas(roadCanvas, 220, rails, RECORD_SECONDS, data, progress);
 }
 
 // リプレイ再生(約3秒かけてボールが道をなぞる)
@@ -999,21 +1235,55 @@ function playRoadReplay() {
 
 replayBtn.addEventListener("click", playRoadReplay);
 
+// 【今回追加】直近の値の中央値を求める(ピッチのガタつきをなめらかにするため)
+function median(arr) {
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+// 【今回追加】成功の瞬間に鳴らす、明るい上向きの和音(ド・ミ・ソ)。ブザー的な音は使わない
+function playSparkleChime() {
+  const ctx = ensureAudioContext();
+  const now = ctx.currentTime;
+  const notes = [523.25, 659.25, 783.99]; // ド・ミ・ソ(1オクターブ上)
+  notes.forEach((f, i) => playPianoNote(f, 0.3, now + i * 0.03));
+}
+
 // ---------- 結果表示 ----------
 const noteStarsArea = document.getElementById("noteStars");
 
 function showResult(result) {
   showScreen("result");
   noteStarsArea.innerHTML = ""; // 前回の星表示をリセット
+  lastResult = result; // 【工程5追加】弱点判定で使うため直近の結果を控えておく(端末内のみ)
+  compareBox.style.display = "none"; // 【工程5追加】比較表示は毎回いったんリセット
 
   if (result.noVoice) {
     // 声が録れていなかった場合。責めずに、やり方をやさしく案内する
     roadWrap.style.display = "none"; // 道は表示しない(見せるものがないため)
+    practiceBtn.style.display = "none"; // 【工程5追加】採点できていないので練習ボタンは出さない
     celebrateEmoji.textContent = "🎤";
     scoreNum.textContent = "--";
     goodPoint.textContent = "ちょうせん できたね!";
     nextPoint.textContent = "こえが とどかなかったみたい。マイクに ちかづいて、おてほんと おなじ たかさで「ドードー・レーレー・ミーミー」と うたってみよう!";
     return;
+  }
+  practiceBtn.style.display = "block"; // 【工程5追加】通常どおり採点できたら練習ボタンを表示
+
+  // 【工程5追加】「おすすめ練習」を経て再挑戦したときだけ、1回目との比較を表示する
+  if (previousTotal !== null) {
+    const diff = result.total - previousTotal;
+    if (diff > 0) {
+      compareText.textContent = previousTotal + "てん → " + result.total + "てん! " + diff + "てん アップ⤴️";
+    } else if (diff === 0) {
+      compareText.textContent = previousTotal + "てん → " + result.total + "てん! あんていして きたね!";
+    } else {
+      // 下がっても否定しない。前向きな言葉で締める(設計書のルールどおり)
+      compareText.textContent = previousTotal + "てん → " + result.total + "てん。かなり ちかづいて きたよ!";
+    }
+    compareBox.style.display = "block";
+    previousTotal = null; // 比較を出したら基準点はリセット(次はまた新しい基準から)
   }
 
   // 音の道リプレイの準備と自動再生
@@ -1045,14 +1315,498 @@ function showResult(result) {
 // ---------- 結果画面のボタン ----------
 // もういちど歌う:スタート画面に戻してから、自動で「うたってみる」と同じ流れを始める
 retryBtn.addEventListener("click", () => {
+  previousTotal = null; // 【工程5追加】練習を経ない普通の再挑戦では比較表示を出さない
   showScreen("start");
   // 画面が切り替わるのを少しだけ待ってから録音の流れへ
   setTimeout(() => singBtn.click(), 100);
 });
 
 backBtn.addEventListener("click", () => {
+  previousTotal = null; // 【工程5追加】
   showScreen("start");
   startStatus.textContent = "まずは おてほんを きいてみよう";
+});
+
+/* =========================================================
+   工程5:弱点判定と、おすすめ練習(ミニゲーム)
+   ・採点結果から「弱点を1つだけ」判定する(優先順位つき。複数は指摘しない)
+   ・弱点に応じて「1音まねっこ」か「ロングトーン」のミニ練習を出す
+   ・練習後は最大サイズのボタンで再挑戦をうながし、1回目との点数比較を表示する
+   ・練習中の録音もすべて端末内でのみ処理し、外部送信は一切しない
+   ========================================================= */
+
+// ---------- 弱点判定のしきい値(セント。100セント=半音、200セント=1音ぶん) ----------
+const HALF_TONE = 100;
+const ONE_NOTE = 200;
+
+// ---------- 弱点を1つだけ判定する(上から順に判定し、最初に該当したものを採用) ----------
+function judgeWeakness(result) {
+  const segs = result.segmentResults;
+  // 声がじゅうぶん録れていた区間だけを判定材料にする
+  const valid = segs.filter(s => s.centsDiff !== null);
+
+  // 1・2:ぜんたいの平均が半音以上ズレている
+  if (valid.length >= 2) {
+    const avg = valid.reduce((a, s) => a + s.centsDiff, 0) / valid.length;
+    if (avg <= -HALF_TONE) return { type: "low", avgCents: avg };
+    if (avg >= HALF_TONE) return { type: "high", avgCents: avg };
+  }
+
+  // 3:特定の1区間だけ1音(200セント)以上ズレていて、他の区間は半音未満のズレにおさまっている
+  const offIdx = [];
+  segs.forEach((s, i) => { if (s.centsDiff !== null && Math.abs(s.centsDiff) >= ONE_NOTE) offIdx.push(i); });
+  if (offIdx.length === 1) {
+    const others = segs.filter((s, i) => i !== offIdx[0] && s.centsDiff !== null);
+    if (others.every(s => Math.abs(s.centsDiff) < HALF_TONE)) {
+      return { type: "oneNote", noteIdx: offIdx[0] };
+    }
+  }
+
+  // 4:声のブレ幅(安定性)が大きい
+  const lv = LEVELS[currentLevel];
+  if (result.stdDev > lv.stableFree) {
+    return { type: "shaky" };
+  }
+
+  // 5:とくに大きな弱点なし →「バランスがいいね!」+ロングトーン練習
+  return { type: "balance" };
+}
+
+// ---------- マイクの再準備・停止(練習用。すでに録音を止めた後、再びボタン操作から始める) ----------
+async function ensureMicReady() {
+  if (mediaStream) return; // すでに使えるならそのまま使う
+  mediaStream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+  });
+  const source = audioContext.createMediaStreamSource(mediaStream);
+  analyserNode = audioContext.createAnalyser();
+  analyserNode.fftSize = 2048;
+  source.connect(analyserNode);
+  inputBuffer = new Float32Array(analyserNode.fftSize);
+  if (PitchDetector) detector = PitchDetector.forFloat32Array(analyserNode.fftSize);
+}
+function stopMic() {
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(t => t.stop());
+    mediaStream = null;
+  }
+}
+
+// 少しだけ待つ(演出のタイミング調整用)
+function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+// 【今回追加】練習中の音量の波(こえが とどいてるよ、の安心表示)を更新する
+function updatePracticeWaveBars(rms) {
+  const level = Math.min(rms * 1200, 100);
+  practiceWaveBars.forEach((bar, i) => {
+    const centerBoost = 1 - Math.abs(i - PRACTICE_WAVE_BAR_COUNT / 2) / (PRACTICE_WAVE_BAR_COUNT / 2) * 0.5;
+    const h = 6 + level * 0.55 * centerBoost * (0.7 + Math.random() * 0.3);
+    bar.style.height = Math.min(h, 42) + "px";
+  });
+}
+
+function updateMimicStars(matched) {
+  const span = document.createElement("span");
+  span.className = "mimic-star";
+  span.textContent = matched ? "⭐" : "☆";
+  mimicStars.appendChild(span);
+}
+
+// 画面を切り替えずに、練習画面の中だけで「3・2・1・ラー!」を進める
+function runPracticeCountdown(from) {
+  return new Promise(resolve => {
+    let count = from;
+    practiceCountdown.textContent = count;
+    playPianoNote(660, 0.15);
+    const timer = setInterval(() => {
+      count--;
+      if (count > 0) {
+        practiceCountdown.textContent = count;
+        playPianoNote(660, 0.15);
+      } else {
+        clearInterval(timer);
+        practiceCountdown.textContent = "🎵";
+        playPianoNote(880, 0.3);
+        setTimeout(() => {
+          practiceCountdown.textContent = "";
+          resolve();
+        }, 150);
+      }
+    }, 1000);
+  });
+}
+
+// ---------- 「1音まねっこ」練習:声にあわせてボールをリアルタイムに動かす ----------
+const MIMIC_ROUNDS = 3;
+const MIMIC_RECORD_SEC = 2.0; // 合図音よけガード(0.35秒)を差し引いても十分な長さになるよう調整
+const MIMIC_CLEAR_SEC = 0.5; // これだけ道に乗っていたら、そのラウンドは「クリア」扱い
+
+// 【修正1】まねっこ1ラウンドぶんの録音。歌っている最中に、その場でボールを道の上で動かす
+function runLiveMimicRound(targetFreq, targetNoteName, durationSec) {
+  return new Promise(resolve => {
+    const displayData = []; // 描画用(直近5サンプルの中央値でなめらかにした値)
+    const recentFreqs = [];
+    let matchedSeconds = 0; // 道に乗っていた合計時間(ゲージ・ごほうびに使う)
+    let prevElapsed = 0;
+    let chimedThisRound = false; // 1ラウンドにつき、キラキラ音は最初の1回だけ
+    const startCtxTime = audioContext.currentTime;
+    const rails = [{ cents: 0, label: targetNoteName }];
+    mimicGaugeFill.style.width = "0%";
+
+    function loop() {
+      if (practiceCancelled) { resolve({ matchedSeconds }); return; }
+
+      analyserNode.getFloatTimeDomainData(inputBuffer);
+      let rms = 0;
+      for (let i = 0; i < inputBuffer.length; i++) rms += inputBuffer[i] * inputBuffer[i];
+      rms = Math.sqrt(rms / inputBuffer.length);
+      const elapsed = audioContext.currentTime - startCtxTime;
+      updatePracticeWaveBars(rms);
+
+      let isMatched = false;
+      // 開始直後0.35秒(合図音よけガード)は判定・表示をしない
+      if (rms >= VOLUME_THRESHOLD && elapsed >= RECORD_START_GUARD_SEC) {
+        let freq = -1, clarity = 0;
+        if (detector) {
+          const [f, c] = detector.findPitch(inputBuffer, audioContext.sampleRate);
+          freq = f; clarity = c;
+        } else {
+          const r = autoCorrelate(inputBuffer, audioContext.sampleRate);
+          freq = r.freq; clarity = r.clarity;
+        }
+        if (freq > 0 && clarity >= CLARITY_THRESHOLD && freq >= MIN_FREQ && freq <= MAX_FREQ) {
+          recentFreqs.push(freq);
+          if (recentFreqs.length > 5) recentFreqs.shift();
+          // 【修正1】直近5サンプルの中央値を使い、ボールがガタガタ震えないようになめらかにする
+          const smoothedFreq = median(recentFreqs);
+          const cents = freqToCentsDiff(smoothedFreq, targetFreq);
+          isMatched = Math.abs(cents) <= LEVELS[currentLevel].fullBand;
+          displayData.push({ time: elapsed, cents, matched: isMatched });
+        }
+      }
+
+      // 道に乗っていた時間を積算する(フレームの間隔ぶんだけ加算)
+      const dt = elapsed - prevElapsed;
+      if (isMatched) matchedSeconds += dt;
+      prevElapsed = elapsed;
+
+      // 【修正1】ゲージをその場でためる
+      mimicGaugeFill.style.width = Math.min(100, (matchedSeconds / durationSec) * 100) + "%";
+
+      // 【修正1】声にあわせてボールをリアルタイムに動かす(道が金色に光るのも既存のしくみをそのまま使う)
+      drawRoadOnCanvas(practiceRoadCanvas, 140, rails, durationSec, displayData, Math.min(elapsed / durationSec, 1));
+
+      // 道に乗った瞬間に、明るいキラキラ音を鳴らす(1ラウンドにつき1回だけ)
+      if (isMatched && !chimedThisRound) {
+        chimedThisRound = true;
+        playSparkleChime();
+      }
+
+      if (elapsed < durationSec) {
+        requestAnimationFrame(loop);
+      } else {
+        resolve({ matchedSeconds });
+      }
+    }
+    requestAnimationFrame(loop);
+  });
+}
+
+async function runMimicPractice(targetFreq, targetNoteName) {
+  let clearCount = 0;
+  for (let i = 0; i < MIMIC_ROUNDS; i++) {
+    practiceStatus.textContent = (i + 1) + "かいめ:きいて まねしよう";
+    practiceReward.textContent = "";
+    mimicCircle.classList.add("playing");
+    playPianoNote(targetFreq, 0.9);
+    await wait(800);
+    mimicCircle.classList.remove("playing");
+
+    practiceStatus.textContent = "3・2・1・ラー!";
+    await runPracticeCountdown(3);
+    if (practiceCancelled) return;
+
+    practiceStatus.textContent = "うたって!";
+    practiceWaveArea.style.display = "flex";
+    const { matchedSeconds } = await runLiveMimicRound(targetFreq, targetNoteName, MIMIC_RECORD_SEC);
+    practiceWaveArea.style.display = "none";
+    if (practiceCancelled) return;
+
+    const matched = matchedSeconds >= MIMIC_CLEAR_SEC;
+    if (matched) clearCount++;
+    updateMimicStars(matched);
+
+    // 【修正3】その場のごほうび:道に乗っていた時間を数字で見せる(伸びていれば差分も)
+    let rewardText = "みちに のってた じかん " + matchedSeconds.toFixed(1) + "びょう!";
+    if (lastMimicRoundTime !== null && matchedSeconds - lastMimicRoundTime > 0.05) {
+      rewardText += " +" + (matchedSeconds - lastMimicRoundTime).toFixed(1) + "びょう!";
+    }
+    practiceReward.textContent = rewardText;
+    lastMimicRoundTime = matchedSeconds;
+
+    practiceStatus.textContent = matched ? "せいかいに ちかいよ!" : "おしい!もういちど きいてみよう";
+    await wait(500);
+  }
+  practiceStatus.textContent = clearCount >= 1
+    ? "よく がんばったね!すごい ちょうせんだったよ!"
+    : "たくさん ちょうせん できたね!すごいよ!";
+}
+
+// ---------- 「ふうせんゲーム」(ロングトーン練習):声を出すだけでも進む・安定でもっと進む ----------
+// 【修正1】これだけ「進む速さ」がたまるとゴール。声を出し続けるだけの速さ(1.0)でも
+// 3秒あれば余裕をもってゴールできるよう、目標を少し低め(2.5)にしてある
+const BALLOON_GOAL_VIRTUAL_SEC = 2.5;
+const BALLOON_MAX_SEC = 6;          // 待たせすぎないよう、録音はここで打ち切る
+const BALLOON_STABLE_WINDOW_SEC = 0.3; // 「安定」を見る時間の幅
+const BALLOON_STABLE_CENTS = 90;       // この幅より声のブレが小さければ「安定」とみなす(的の音とは無関係)
+
+// 【修正1・2】ふうせんラウンド。
+// a) 声が出ているだけで、ふうせんはゆっくり進む(必須条件は「声が出ていること」だけ)
+// b) 声(自分の声だけを見て)が安定していれば、2倍の速さで進む
+// c) さらに的の音(道)に乗っていれば、キラキラ✨するボーナスで少し速く進む
+// 声が止まっても、ズレても、🎈は「その場で止まる」だけ(落ちたり割れたりしない)
+function runLiveBalloonRound(targetFreq) {
+  return new Promise(resolve => {
+    const recentFreqs = [];     // 的の音とのボーナス判定用(直近5サンプルの中央値)
+    const stabilityWindow = []; // 【修正1】自分の声だけを見た「安定」判定用(直近0.3秒)
+    let virtualProgressSec = 0; // ふうせんの進み具合(速さの積み重ね)
+    let voiceSeconds = 0;       // 実際に声が出ていた時間(ごほうび表示に使う)
+    let prevElapsed = 0;
+    let chimed = false;
+    const startCtxTime = audioContext.currentTime;
+    balloonIcon.style.left = "5%";
+    balloonIcon.textContent = "🎈";
+
+    function loop() {
+      if (practiceCancelled) {
+        resolve({ voiceSeconds, progress: Math.min(virtualProgressSec / BALLOON_GOAL_VIRTUAL_SEC, 1), reachedGoal: false });
+        return;
+      }
+
+      analyserNode.getFloatTimeDomainData(inputBuffer);
+      let rms = 0;
+      for (let i = 0; i < inputBuffer.length; i++) rms += inputBuffer[i] * inputBuffer[i];
+      rms = Math.sqrt(rms / inputBuffer.length);
+      const elapsed = audioContext.currentTime - startCtxTime;
+      updatePracticeWaveBars(rms);
+
+      // 【修正1】必須条件は「声が出ていること」だけ(的の音への一致は不要)
+      const voicePresent = rms >= VOLUME_THRESHOLD && elapsed >= RECORD_START_GUARD_SEC;
+      let isStable = false;
+      let onPitch = false;
+
+      if (voicePresent) {
+        let freq = -1, clarity = 0;
+        if (detector) {
+          const [f, c] = detector.findPitch(inputBuffer, audioContext.sampleRate);
+          freq = f; clarity = c;
+        } else {
+          const r = autoCorrelate(inputBuffer, audioContext.sampleRate);
+          freq = r.freq; clarity = r.clarity;
+        }
+        if (freq > 0 && clarity >= CLARITY_THRESHOLD && freq >= MIN_FREQ && freq <= MAX_FREQ) {
+          // 【修正1】安定の判定は、的の音とは比べず「自分の声の直近0.3秒のブレ幅」だけで見る
+          stabilityWindow.push({ time: elapsed, freq });
+          while (stabilityWindow.length > 0 && elapsed - stabilityWindow[0].time > BALLOON_STABLE_WINDOW_SEC) {
+            stabilityWindow.shift();
+          }
+          if (stabilityWindow.length >= 3) {
+            const freqs = stabilityWindow.map(s => s.freq);
+            const refFreq = freqs.reduce((a, b) => a + b, 0) / freqs.length;
+            const centsList = freqs.map(f2 => 1200 * Math.log2(f2 / refFreq));
+            const mean = centsList.reduce((a, b) => a + b, 0) / centsList.length;
+            const variance = centsList.reduce((a, c) => a + (c - mean) * (c - mean), 0) / centsList.length;
+            isStable = Math.sqrt(variance) <= BALLOON_STABLE_CENTS;
+          }
+
+          // 【修正2】的の音への一致は「ボーナス」に格下げ(なめらかにした値で判定)
+          recentFreqs.push(freq);
+          if (recentFreqs.length > 5) recentFreqs.shift();
+          const smoothedFreq = median(recentFreqs);
+          const cents = freqToCentsDiff(smoothedFreq, targetFreq);
+          onPitch = Math.abs(cents) <= LEVELS[currentLevel].fullBand;
+        }
+      } else {
+        stabilityWindow.length = 0; // 声が途切れたら安定の判定はリセット
+      }
+
+      // 【修正1・2】進む速さ:声が出ているだけで1倍、安定していれば2倍、的にも乗ればさらに+0.5
+      let rate = 0;
+      if (voicePresent) {
+        rate = isStable ? 2.0 : 1.0;
+        if (onPitch) rate += 0.5;
+      }
+
+      const dt = elapsed - prevElapsed;
+      if (voicePresent) voiceSeconds += dt;
+      virtualProgressSec += dt * rate;
+      prevElapsed = elapsed;
+
+      // 【修正2】的に乗っている間はキラキラ表示に変える(ボーナス中の合図。音は鳴らさない)
+      balloonIcon.textContent = onPitch ? "🎈✨" : "🎈";
+
+      const progress = Math.min(virtualProgressSec / BALLOON_GOAL_VIRTUAL_SEC, 1);
+      balloonIcon.style.left = (5 + progress * 85) + "%";
+
+      if (progress >= 1 && !chimed) {
+        chimed = true;
+        playSparkleChime();
+        resolve({ voiceSeconds, progress, reachedGoal: true });
+        return;
+      }
+      if (elapsed >= BALLOON_MAX_SEC) {
+        resolve({ voiceSeconds, progress, reachedGoal: false });
+        return;
+      }
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  });
+}
+
+async function runLongTonePractice(targetFreq, targetNoteName) {
+  practiceStatus.textContent = "きいて まねしよう";
+  playPianoNote(targetFreq, 0.9);
+  await wait(800);
+
+  practiceStatus.textContent = "3・2・1・ラー!";
+  await runPracticeCountdown(3);
+  if (practiceCancelled) return;
+
+  practiceStatus.textContent = "こえを のばして、ふうせんを とばそう!";
+  practiceWaveArea.style.display = "flex";
+  const { voiceSeconds, progress, reachedGoal } = await runLiveBalloonRound(targetFreq);
+  practiceWaveArea.style.display = "none";
+  if (practiceCancelled) return;
+
+  // その場のごほうび:実際に声を出していた時間を数字で見せる(伸びていれば差分も)
+  let rewardText = "のばせた じかん " + voiceSeconds.toFixed(1) + "びょう!";
+  if (lastLongtoneTime !== null && voiceSeconds - lastLongtoneTime > 0.05) {
+    rewardText += " +" + (voiceSeconds - lastLongtoneTime).toFixed(1) + "びょう!";
+  }
+  practiceReward.textContent = rewardText;
+  lastLongtoneTime = voiceSeconds;
+
+  // 【修正3】結果の文言を、実際のふうせんの位置と一致させる
+  if (reachedGoal) {
+    practiceStatus.textContent = "ゴール!🎉";
+  } else if (progress >= 0.7) {
+    practiceStatus.textContent = "あと すこしで ゴール!";
+  } else {
+    practiceStatus.textContent = "こえが しっかり きこえたよ!つぎは もっと ながく のばしてみよう!";
+  }
+}
+
+
+// ---------- 弱点にあわせて練習画面をセットアップする ----------
+function setupPracticeScreen(w) {
+  practiceRetryBtn.style.display = "none";
+  practiceStartBtn.style.display = "block";
+  practiceListenBtn.style.display = "block";
+  practiceStatus.textContent = "じゅんびが できたら はじめよう";
+  practiceCountdown.textContent = "";
+  practiceWaveArea.style.display = "none";
+  practiceReward.textContent = "";
+  mimicStars.innerHTML = "";
+  mimicGaugeFill.style.width = "0%";
+  balloonIcon.style.left = "5%";
+  practiceRoadWrap.style.display = "none"; // モードが決まってから表示する
+  practiceCancelled = false; // 【今回追加】新しい練習を始めるので、キャンセル状態をリセット
+
+  let targetFreq = TARGET_NOTES[1].freq; // 基本は「レ」の高さで練習する
+  let targetNoteName = TARGET_NOTES[1].name; // 丸・道に表示する音名
+  let mode = "mimic"; // "mimic"(1音まねっこ) か "longtone"(ロングトーン)
+
+  if (w.type === "low" || w.type === "high") {
+    weaknessEmoji.textContent = "🎵";
+    // 【修正2】設計書どおり「ボールを うえ/したの みちに のせよう」の言い方に。
+    // ただし600セントを超えるズレは折りたたみの影響で方向があいまいになるため、方向は言わない
+    const unclear = Math.abs(w.avgCents) > DIRECTION_UNCLEAR_LIMIT;
+    if (unclear) {
+      weaknessTitle.textContent = "ぜんたいの たかさを あわせる れんしゅうを しよう!";
+    } else if (w.type === "low") {
+      weaknessTitle.textContent = "ボールを すこし うえの みちに のせよう!";
+    } else {
+      weaknessTitle.textContent = "ボールを すこし したの みちに のせよう!";
+    }
+  } else if (w.type === "oneNote") {
+    weaknessEmoji.textContent = "🎯";
+    const nm = TARGET_NOTES[w.noteIdx].name;
+    weaknessTitle.textContent = nm + "の おとだけ れんしゅうしよう!";
+    targetFreq = TARGET_NOTES[w.noteIdx].freq;
+    targetNoteName = nm;
+  } else if (w.type === "shaky") {
+    weaknessEmoji.textContent = "🎈";
+    weaknessTitle.textContent = "こえを まっすぐ のばす れんしゅうを しよう!";
+    mode = "longtone";
+  } else {
+    // balance:とくに弱点なし
+    weaknessEmoji.textContent = "🌟";
+    weaknessTitle.textContent = "バランスが いいね!もっと じょうずに なる れんしゅうを しよう!";
+    mode = "longtone";
+  }
+
+  // 【修正2】丸には的の音名だけを表示する(「ラー」と歌うことは案内文のほうに書いてある)
+  mimicCircle.textContent = targetNoteName;
+
+  mimicArea.style.display = mode === "mimic" ? "block" : "none";
+  longtoneArea.style.display = mode === "longtone" ? "block" : "none";
+  practiceRoadWrap.style.display = mode === "mimic" ? "flex" : "none"; // 【修正1】道はまねっこのときだけ使う
+
+  // お手本を聞くだけのボタン(何度でも可)
+  practiceListenBtn.onclick = () => {
+    ensureAudioContext();
+    playPianoNote(targetFreq, 0.9);
+  };
+
+  // 練習スタート:マイク準備→ミニゲーム実行→終わったら再挑戦ボタンを出す
+  practiceStartBtn.onclick = async () => {
+    // ボタン自体を非表示にして、本番の録音画面と同じく案内文だけが見える画面にする
+    practiceStartBtn.style.display = "none";
+    practiceListenBtn.style.display = "none";
+    try {
+      ensureAudioContext();
+      await ensureMicReady();
+      if (mode === "mimic") {
+        await runMimicPractice(targetFreq, targetNoteName);
+      } else {
+        await runLongTonePractice(targetFreq, targetNoteName);
+      }
+    } catch (err) {
+      console.log("練習中のマイクエラー:", err);
+      practiceStatus.textContent = "マイクが つかえなかったよ。もういちど ためしてね";
+      practiceStartBtn.style.display = "block";
+      practiceListenBtn.style.display = "block";
+      practiceWaveArea.style.display = "none";
+      return;
+    }
+    stopMic(); // 練習が終わったらマイクを止める(使用中マークを消す)
+    practiceRetryBtn.style.display = "block";
+  };
+}
+
+// ---------- 「おすすめ練習をやってみる」ボタン(結果画面) ----------
+practiceBtn.addEventListener("click", () => {
+  if (!lastResult || lastResult.noVoice) return;
+  currentWeakness = judgeWeakness(lastResult);
+  previousTotal = lastResult.total; // このあと再挑戦したときに比べる基準点にする
+  setupPracticeScreen(currentWeakness);
+  showScreen("weakness");
+});
+
+// ---------- 練習画面のボタン ----------
+// 「もういちど うたって きろく こうしんに ちょうせん!」:最初のカウントダウンからの本番録音へ
+practiceRetryBtn.addEventListener("click", () => {
+  showScreen("start");
+  setTimeout(() => singBtn.click(), 100);
+});
+
+// 結果画面へ戻る(練習を最後までやらずに戻る場合。比較の基準点もリセットする)
+weaknessBackBtn.addEventListener("click", () => {
+  previousTotal = null;
+  stopMic();
+  practiceCancelled = true; // 【今回修正】ライブで動いている練習ループがあれば止める
+  showScreen("result");
 });
 </script>
 
