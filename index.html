@@ -188,6 +188,38 @@
     color: #e07b00;
   }
 
+  /* 音の道リプレイ */
+  .road-wrap {
+    width: 100%;
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    padding: 12px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #roadCanvas {
+    width: 100%;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #eaf7ff 0%, #fdf3ff 100%);
+  }
+  .small-btn {
+    margin-top: 10px;
+    height: 48px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+    background: #a29bfe;
+    box-shadow: 0 3px 0 rgba(0,0,0,0.15);
+    cursor: pointer;
+  }
+  .small-btn:active { transform: translateY(3px); box-shadow: none; }
+
   /* 音ごとの星表示(結果画面) */
   .note-stars {
     display: flex;
@@ -274,6 +306,11 @@
     <div class="score-big"><span id="scoreNum">0</span><span class="score-unit">てん</span></div>
     <!-- 音ごとの結果(⭐=ばっちり、☆=おしい)。どの音を直せばいいか一目で分かる -->
     <div class="note-stars" id="noteStars"></div>
+    <!-- 音の道リプレイ:お手本=道、自分の声=ボール。高い音ほど上 -->
+    <div class="road-wrap" id="roadWrap">
+      <canvas id="roadCanvas"></canvas>
+      <button class="small-btn" id="replayBtn">▶️ もういちど みる</button>
+    </div>
     <div class="feedback-box">
       <span class="label">🌟 よかったところ</span>
       <span id="goodPoint"></span>
@@ -775,6 +812,160 @@ function makeFeedback(result) {
   return { good, next };
 }
 
+// ---------- 音の道リプレイ ----------
+// お手本の3音を「道(レール)」として横に描き、自分の声のピッチの動きを
+// 「ボール」が道の上をなぞる形で再生する。高い音ほど画面の上。
+// 合っていた区間は道が金色に光って⭐が付く。ズレは浮き沈みだけ(×や赤は使わない)
+const roadWrap = document.getElementById("roadWrap");
+const roadCanvas = document.getElementById("roadCanvas");
+const replayBtn = document.getElementById("replayBtn");
+let lastSamplesForRoad = [];   // リプレイ用に直近の録音の記録をとっておく(端末内のみ)
+let roadAnimId = null;
+
+// 縦位置の計算:ドの高さ(0セント)を基準に、上下にどれだけ離れているかで決める
+// 表示範囲は -500〜+900セント(ド〜ミ+ズレぶんが収まる範囲)
+const ROAD_MIN_CENTS = -500;
+const ROAD_MAX_CENTS = 900;
+
+function centsToY(cents, height) {
+  // セントが大きい(高い音)ほど上=Y座標は小さくなる
+  const ratio = (cents - ROAD_MIN_CENTS) / (ROAD_MAX_CENTS - ROAD_MIN_CENTS);
+  return height - ratio * height;
+}
+
+// お手本3音の「道の高さ」(ドを0セントとして、レ=+200、ミ=+400)
+const RAIL_CENTS = [0, 200, 400];
+
+// 録音サンプルを描画用に変換する(セント値に直し、オクターブ差は折りたたむ)
+function prepareRoadData(samples) {
+  return samples.map(s => {
+    const segIdx = Math.min(Math.floor(s.time / (RECORD_SECONDS / 3)), 2);
+    // その区間のお手本の音を基準に、±600セントに折りたたんだズレを計算
+    const diff = freqToCentsDiff(s.freq, TARGET_NOTES[segIdx].freq);
+    return {
+      time: s.time,
+      cents: RAIL_CENTS[segIdx] + diff, // 道の高さ+ズレぶん=ボールの高さ
+      matched: Math.abs(diff) <= LEVELS[currentLevel].fullBand // 合っていたか
+    };
+  });
+}
+
+// 道とボールを描く。progress は 0〜1(リプレイの進み具合)
+function drawRoad(data, progress) {
+  const dpr = window.devicePixelRatio || 1;
+  const cssWidth = roadCanvas.clientWidth;
+  const cssHeight = 220;
+  roadCanvas.width = cssWidth * dpr;
+  roadCanvas.height = cssHeight * dpr;
+  const ctx2d = roadCanvas.getContext("2d");
+  ctx2d.scale(dpr, dpr);
+  ctx2d.clearRect(0, 0, cssWidth, cssHeight);
+
+  const pad = 14; // 左右の余白
+  const w = cssWidth - pad * 2;
+  const nowTime = progress * RECORD_SECONDS;
+
+  // --- 道(レール)を描く。3本の水平線。通過済みで合っていた部分は金色 ---
+  for (let i = 0; i < 3; i++) {
+    const x0 = pad + (i / 3) * w;
+    const x1 = pad + ((i + 1) / 3) * w - 8;
+    const y = centsToY(RAIL_CENTS[i], cssHeight);
+
+    // ベースの道(グレー)
+    ctx2d.strokeStyle = "#d8d8e0";
+    ctx2d.lineWidth = 10;
+    ctx2d.lineCap = "round";
+    ctx2d.beginPath();
+    ctx2d.moveTo(x0, y);
+    ctx2d.lineTo(x1, y);
+    ctx2d.stroke();
+
+    // この区間で「合っていた」時間帯を金色で上塗りする
+    const segStart = i * (RECORD_SECONDS / 3);
+    const segEnd = (i + 1) * (RECORD_SECONDS / 3);
+    const matchedTimes = data.filter(d => d.matched && d.time >= segStart && d.time < Math.min(segEnd, nowTime));
+    if (matchedTimes.length > 0) {
+      ctx2d.strokeStyle = "#ffd35c";
+      ctx2d.lineWidth = 10;
+      matchedTimes.forEach(d => {
+        const x = pad + (d.time / RECORD_SECONDS) * w;
+        ctx2d.beginPath();
+        ctx2d.moveTo(Math.max(x - 3, x0), y);
+        ctx2d.lineTo(Math.min(x + 3, x1), y);
+        ctx2d.stroke();
+      });
+      // 区間の半分以上が金色なら⭐を道の上に出す
+      const segSamples = data.filter(d => d.time >= segStart && d.time < segEnd);
+      if (nowTime >= segEnd && segSamples.length > 0 &&
+          segSamples.filter(d => d.matched).length >= segSamples.length / 2) {
+        ctx2d.font = "22px sans-serif";
+        ctx2d.textAlign = "center";
+        ctx2d.fillText("⭐", (x0 + x1) / 2, y - 18);
+      }
+    }
+
+    // 音名ラベル(道の左端)
+    ctx2d.fillStyle = "#999";
+    ctx2d.font = "bold 14px sans-serif";
+    ctx2d.textAlign = "left";
+    ctx2d.fillText(TARGET_NOTES[i].name, x0, y + 26);
+  }
+
+  // --- 自分の声の軌跡(今までに通った部分だけ線で描く) ---
+  const passed = data.filter(d => d.time <= nowTime);
+  if (passed.length > 1) {
+    ctx2d.strokeStyle = "#ff9f43";
+    ctx2d.lineWidth = 3;
+    ctx2d.beginPath();
+    passed.forEach((d, i) => {
+      const x = pad + (d.time / RECORD_SECONDS) * w;
+      const y = centsToY(d.cents, cssHeight);
+      if (i === 0) ctx2d.moveTo(x, y);
+      else ctx2d.lineTo(x, y);
+    });
+    ctx2d.stroke();
+  }
+
+  // --- ボール(現在位置)。声がない時間帯は描かない ---
+  if (passed.length > 0) {
+    const last = passed[passed.length - 1];
+    // 直近0.2秒以内に声があったときだけボールを表示
+    if (nowTime - last.time < 0.2) {
+      const x = pad + (last.time / RECORD_SECONDS) * w;
+      const y = centsToY(last.cents, cssHeight);
+      ctx2d.fillStyle = last.matched ? "#ffb300" : "#ff7a59";
+      ctx2d.beginPath();
+      ctx2d.arc(x, y, 11, 0, Math.PI * 2);
+      ctx2d.fill();
+      // ボールの顔(うたっこ気分の白目)
+      ctx2d.fillStyle = "#fff";
+      ctx2d.beginPath();
+      ctx2d.arc(x - 3, y - 2, 2.2, 0, Math.PI * 2);
+      ctx2d.arc(x + 3, y - 2, 2.2, 0, Math.PI * 2);
+      ctx2d.fill();
+    }
+  }
+}
+
+// リプレイ再生(約3秒かけてボールが道をなぞる)
+function playRoadReplay() {
+  if (roadAnimId) cancelAnimationFrame(roadAnimId);
+  const data = prepareRoadData(lastSamplesForRoad);
+  const startMs = performance.now();
+  const durationMs = RECORD_SECONDS * 1000;
+
+  function frame(nowMs) {
+    const progress = Math.min((nowMs - startMs) / durationMs, 1);
+    drawRoad(data, progress);
+    if (progress < 1) {
+      roadAnimId = requestAnimationFrame(frame);
+    }
+  }
+  roadAnimId = requestAnimationFrame(frame);
+}
+
+replayBtn.addEventListener("click", playRoadReplay);
+
 // ---------- 結果表示 ----------
 const noteStarsArea = document.getElementById("noteStars");
 
@@ -784,12 +975,18 @@ function showResult(result) {
 
   if (result.noVoice) {
     // 声が録れていなかった場合。責めずに、やり方をやさしく案内する
+    roadWrap.style.display = "none"; // 道は表示しない(見せるものがないため)
     celebrateEmoji.textContent = "🎤";
     scoreNum.textContent = "--";
     goodPoint.textContent = "ちょうせん できたね!";
     nextPoint.textContent = "こえが とどかなかったみたい。マイクに ちかづいて、おてほんと おなじ たかさで「ドードー・レーレー・ミーミー」と うたってみよう!";
     return;
   }
+
+  // 音の道リプレイの準備と自動再生
+  roadWrap.style.display = "flex";
+  lastSamplesForRoad = pitchSamples.slice(); // 直近の録音を控えておく(端末内のみ)
+  setTimeout(playRoadReplay, 400); // 点数が出た少し後に自動でリプレイ開始
 
   // 総合点の表示と演出(60点以上でお祝い。それ未満でも拍手=否定しない)
   scoreNum.textContent = result.total;
