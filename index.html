@@ -227,7 +227,13 @@
 
   <!-- ========== 画面3:録音中 ========== -->
   <div class="screen" id="screenRecording">
-    <div class="guide-text">うたって!「ド・レ・ミ」</div>
+    <div class="guide-text">うたって!</div>
+    <!-- カラオケ風ガイド:今うたう音の丸が大きく光る(判定はしない。道しるべだけ) -->
+    <div class="notes-row">
+      <div class="note-circle c0" id="recNote0">ド</div>
+      <div class="note-circle c1" id="recNote1">レ</div>
+      <div class="note-circle c2" id="recNote2">ミ</div>
+    </div>
     <div class="wave-area" id="waveArea"></div>
     <div class="status">こえが とどいてるよ</div>
   </div>
@@ -283,7 +289,7 @@ const RECORD_SECONDS = 3.0;  // 録音時間(秒)= 3音ぶん
 // ---------- 解析まわりの設定(工程2と同じ) ----------
 const MIN_FREQ = 70;    // 検出する声の下限(大人の低い声)
 const MAX_FREQ = 1050;  // 検出する声の上限(子どもの高い声)
-const VOLUME_THRESHOLD = 0.02;   // これ未満の音量は無音とみなす(雑音対策で0.01から引き上げ)
+const VOLUME_THRESHOLD = 0.015;  // これ未満の音量は無音とみなす(0.01=雑音を拾いすぎ、0.02=声を逃しすぎ、の中間に調整)
 const CLARITY_THRESHOLD = 0.85;  // Pitchyの「確からしさ」の合格ライン
 
 // ---------- 画面の部品 ----------
@@ -475,12 +481,30 @@ function runCountdown(from) {
 }
 
 // ---------- 録音開始(3秒間ピッチを記録) ----------
+const recNotes = [
+  document.getElementById("recNote0"),
+  document.getElementById("recNote1"),
+  document.getElementById("recNote2")
+];
+
 function startRecording() {
   showScreen("recording");
   pitchSamples = [];
   isRecording = true;
   recordStartTime = audioContext.currentTime;
   recordLoop();
+
+  // カラオケ風ガイド:1秒ごとに「今うたう音」の丸を大きく光らせる
+  // (音程の判定はしない。タイミングの道しるべだけ)
+  recNotes.forEach(c => c.classList.remove("playing"));
+  recNotes[0].classList.add("playing"); // 最初はドから
+  for (let i = 1; i < 3; i++) {
+    setTimeout(() => {
+      if (!isRecording) return; // すでに録音が終わっていたら何もしない
+      recNotes.forEach(c => c.classList.remove("playing"));
+      recNotes[i].classList.add("playing");
+    }, i * 1000);
+  }
 
   // 3秒たったら自動で止める
   setTimeout(() => {
@@ -579,11 +603,9 @@ function freqToCentsDiff(freq, targetFreq) {
 
 function calculateScore(samples) {
   // 声がじゅうぶん録れていなかった場合は採点しない。
-  // 【修正】以前は「10個以上」で採点していたが、部屋の物音だけでも
-  // 10個くらいは記録されてしまい、歌っていないのに点が出る問題があった。
-  // 3秒の録音では、歌っていれば100個以上は記録されるので、
-  // 「40個未満=声と呼べる量がない」として案内画面に回す
-  if (samples.length < 40) {
+  // 【調整メモ】10個=雑音でも点が出てしまう/40個=小さめの歌声まで「--」になってしまう。
+  // 中間の25個(3秒中およそ0.4秒ぶんの声)を基準にする
+  if (samples.length < 25) {
     return { noVoice: true };
   }
 
