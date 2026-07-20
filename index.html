@@ -370,6 +370,11 @@
 
   <!-- ========== 画面1:スタート(お手本を聞く) ========== -->
   <div class="screen show" id="screenStart">
+    <!-- 【工程6追加】おやこチャレンジ中だけ表示する「いま だれの ばんか」のかんばん -->
+    <div class="feedback-box" id="challengeBanner" style="display:none; text-align:center;">
+      <span class="label">👨‍👧 おやこチャレンジ</span>
+      <span id="challengeBannerText" style="display:block; font-size:22px; font-weight:bold; color:#ff7a59;">おとなの ばん!</span>
+    </div>
     <div class="notes-row">
       <div class="note-circle c0" id="noteC0">ド</div>
       <div class="note-circle c1" id="noteC1">レ</div>
@@ -380,20 +385,24 @@
       <button class="level-btn" id="levelEasy">🐣 やさしい</button>
       <button class="level-btn" id="levelNormal">🎵 ふつう</button>
     </div>
+    <!-- 【工程6追加】こどもの番のときだけ表示。お手本を1オクターブ上げて聞ける(聞こえ方だけを変える。採点には影響しない) -->
+    <button class="mid-btn" id="childHeightBtn" style="display:none; background:#1dd1a1;">🧒 こどものたかさ:OFF</button>
     <button class="mid-btn" id="listenBtn">▶️ きく</button>
     <button class="big-btn" id="singBtn">🎤 うたってみる</button>
+    <!-- 【工程6追加】おやこチャレンジへの入り口(チャレンジ中は隠れる) -->
+    <button class="mid-btn" id="challengeStartBtn" style="background:#a29bfe;">👨‍👧 おやこチャレンジ</button>
     <div class="status" id="startStatus">まずは おてほんを きいてみよう</div>
   </div>
 
   <!-- ========== 画面2:カウントダウン ========== -->
   <div class="screen" id="screenCountdown">
-    <div class="guide-text">じゅんびして…</div>
+    <div class="guide-text" id="countdownGuideText">じゅんびして…</div>
     <div class="countdown" id="countdownNum">3</div>
   </div>
 
   <!-- ========== 画面3:録音中 ========== -->
   <div class="screen" id="screenRecording">
-    <div class="guide-text">うたって!</div>
+    <div class="guide-text" id="recordingGuideText">うたって!</div>
     <!-- カラオケ風ガイド:今うたう音の丸が大きく光る(判定はしない。道しるべだけ) -->
     <div class="notes-row">
       <div class="note-circle c0" id="recNote0">ド</div>
@@ -488,6 +497,39 @@
     <button class="text-btn" id="weaknessBackBtn">けっかがめんへ もどる</button>
   </div>
 
+  <!-- ========== 画面6(工程6追加):おやこチャレンジ・ひとりぶんのけっか(3びょうだけ表示) ========== -->
+  <div class="screen" id="screenChallengeTurnResult">
+    <div class="celebrate" id="challengeResultEmoji">👏</div>
+    <div class="feedback-box" style="text-align:center;">
+      <span class="label" id="challengeResultLabel">おとなの けっか</span>
+      <div class="score-big" style="font-size:60px;"><span id="challengeResultScore">0</span><span class="score-unit">てん</span></div>
+    </div>
+  </div>
+
+  <!-- ========== 画面7(工程6追加):こうたい! ========== -->
+  <div class="screen" id="screenChallengeHandoff">
+    <div class="celebrate">🔄</div>
+    <div class="guide-text" style="font-size:34px;">こうたい!</div>
+    <div class="feedback-box" style="text-align:center; font-size:20px; font-weight:bold; color:#ff7a59;" id="handoffNextText">つぎは こどもの ばん!</div>
+    <button class="big-btn glow-btn" id="handoffContinueBtn">🎤 じゅんび できたよ!</button>
+  </div>
+
+  <!-- ========== 画面8(工程6追加):おやこチームスコア発表 ========== -->
+  <div class="screen" id="screenChallengeTeam">
+    <div class="celebrate">🎉🙌🎊</div>
+    <div class="feedback-box" style="text-align:center;">
+      <span class="label">👨‍👧 おやこチームスコア</span>
+      <div class="score-big"><span id="teamScoreNum">0</span><span class="score-unit">てん</span></div>
+    </div>
+    <!-- 【設計書どおり】2人の点数を並べて比較する表示はしない。合計と、前回との差分だけを見せる -->
+    <div class="feedback-box" id="teamCompareBox" style="display:none; text-align:center;">
+      <span class="label">📈 きろくの へんか</span>
+      <span id="teamCompareText"></span>
+    </div>
+    <button class="big-btn glow-btn" id="challengeRetryBtn">🎤 もういちど 2にんで うたう</button>
+    <button class="text-btn" id="challengeEndBtn">おやこチャレンジを おわる</button>
+  </div>
+
 <script type="module">
 /* =========================================================
    うたっこ(ミニ)工程3:聞く → 歌う → 採点 の縦切りMVP
@@ -562,7 +604,11 @@ const screens = {
   countdown: document.getElementById("screenCountdown"),
   recording: document.getElementById("screenRecording"),
   result: document.getElementById("screenResult"),
-  weakness: document.getElementById("screenWeakness") // 【工程5追加】
+  weakness: document.getElementById("screenWeakness"), // 【工程5追加】
+  // 【工程6追加】おやこチャレンジ用の3画面
+  challengeTurnResult: document.getElementById("screenChallengeTurnResult"),
+  challengeHandoff: document.getElementById("screenChallengeHandoff"),
+  challengeTeam: document.getElementById("screenChallengeTeam")
 };
 const listenBtn = document.getElementById("listenBtn");
 const singBtn = document.getElementById("singBtn");
@@ -570,6 +616,9 @@ const retryBtn = document.getElementById("retryBtn");
 const backBtn = document.getElementById("backBtn");
 const startStatus = document.getElementById("startStatus");
 const countdownNum = document.getElementById("countdownNum");
+// 【工程6追加】カウントダウン・録音中に「だれのばんか」を表示するためのガイド文
+const countdownGuideText = document.getElementById("countdownGuideText");
+const recordingGuideText = document.getElementById("recordingGuideText");
 const noteCircles = [
   document.getElementById("noteC0"),
   document.getElementById("noteC1"),
@@ -607,6 +656,21 @@ const practiceRoadWrap = document.getElementById("practiceRoadWrap");
 const practiceRoadCanvas = document.getElementById("practiceRoadCanvas");
 const practiceCountdown = document.getElementById("practiceCountdown");
 const practiceWaveArea = document.getElementById("practiceWaveArea");
+// 【工程6追加】おやこチャレンジまわりの部品
+const challengeStartBtn = document.getElementById("challengeStartBtn");
+const challengeBanner = document.getElementById("challengeBanner");
+const challengeBannerText = document.getElementById("challengeBannerText");
+const childHeightBtn = document.getElementById("childHeightBtn");
+const challengeResultEmoji = document.getElementById("challengeResultEmoji");
+const challengeResultLabel = document.getElementById("challengeResultLabel");
+const challengeResultScore = document.getElementById("challengeResultScore");
+const handoffNextText = document.getElementById("handoffNextText");
+const handoffContinueBtn = document.getElementById("handoffContinueBtn");
+const teamScoreNum = document.getElementById("teamScoreNum");
+const teamCompareBox = document.getElementById("teamCompareBox");
+const teamCompareText = document.getElementById("teamCompareText");
+const challengeRetryBtn = document.getElementById("challengeRetryBtn");
+const challengeEndBtn = document.getElementById("challengeEndBtn");
 // 練習用の音量の波バー(本番より少なめの10本)
 const PRACTICE_WAVE_BAR_COUNT = 10;
 const practiceWaveBars = [];
@@ -655,6 +719,14 @@ let lastMimicRoundTime = null;
 let lastLongtoneTime = null;
 // 【今回追加】画面をはなれたときに、動いているライブ練習ループを止めるためのフラグ
 let practiceCancelled = false;
+
+// 【工程6追加】おやこチャレンジの状態
+let challengeActive = false;        // チャレンジ中かどうか
+let challengeTurn = null;           // "parent"(おとな) または "child"(こども)
+let parentScore = null;             // おとなの点数(このラウンドぶん)
+let childScore = null;              // こどもの点数(このラウンドぶん)
+let previousTeamTotal = null;       // 前回のチームスコア(再挑戦の差分表示に使う)
+let challengeChildOctaveUp = false; // 「こどものたかさ」ボタンのON/OFF(お手本の聞こえ方だけを変える)
 
 // ---------- 難易度(やさしい/ふつう) ----------
 // やさしい:小さい子向け。合格の幅を広げ、点数の下限も高くする
@@ -750,6 +822,18 @@ function playPianoNote(frequency, duration, when) {
   });
 }
 
+// 【工程6追加】お手本を鳴らす高さを決める。
+// 「おやこチャレンジ」の「こどもの ばん」で「こどものたかさ」がONのときだけ、
+// 聞こえやすいように1オクターブ(2倍の周波数)上げて鳴らす。
+// 採点(freqToCentsDiff)は1オクターブの差を同じ音として扱うため、
+// この切り替えは「聞こえ方」だけを変えるもので、点数のつき方は変わらない。
+function getPlaybackFreq(note) {
+  if (challengeActive && challengeTurn === "child" && challengeChildOctaveUp) {
+    return note.freq * 2;
+  }
+  return note.freq;
+}
+
 // ---------- お手本再生(ド→レ→ミを1秒ずつ。丸も一緒に光らせる) ----------
 let isPlayingExample = false;
 
@@ -765,7 +849,7 @@ listenBtn.addEventListener("click", () => {
   // (setTimeoutより音のタイミングが正確。工程1レビューでの宿題に対応)
   const startTime = ctx.currentTime + 0.1;
   TARGET_NOTES.forEach((note, i) => {
-    playPianoNote(note.freq, NOTE_DURATION * 0.95, startTime + i * NOTE_DURATION);
+    playPianoNote(getPlaybackFreq(note), NOTE_DURATION * 0.95, startTime + i * NOTE_DURATION);
   });
 
   // 丸を光らせる演出は見た目用なのでsetTimeoutで十分
@@ -806,6 +890,11 @@ singBtn.addEventListener("click", async () => {
     if (PitchDetector) {
       detector = PitchDetector.forFloat32Array(analyserNode.fftSize);
     }
+
+    // 【工程6追加】おやこチャレンジ中は、カウントダウンの案内文にも「だれのばんか」を出す
+    countdownGuideText.textContent = challengeActive
+      ? (challengeTurn === "child" ? "こどもの ばん!じゅんびして…" : "おとなの ばん!じゅんびして…")
+      : "じゅんびして…";
 
     // カウントダウン開始
     showScreen("countdown");
@@ -854,6 +943,10 @@ const recNotes = [
 ];
 
 function startRecording() {
+  // 【工程6追加】チャレンジ中は録音画面の案内文にも「だれのばんか」を出す
+  recordingGuideText.textContent = challengeActive
+    ? (challengeTurn === "child" ? "こどもの ばん!うたって!" : "おとなの ばん!うたって!")
+    : "うたって!";
   showScreen("recording");
   pitchSamples = [];
   voiceOnsetTime = null;      // 【今回追加】新しい録音のたびに歌い出し検出をリセット
@@ -959,9 +1052,16 @@ function stopRecording() {
     scoringStartTime = RECORD_START_GUARD_SEC;
   }
 
-  // 採点して結果画面へ
+  // 採点する
   const result = calculateScore(pitchSamples, scoringStartTime, onsetDetected);
-  showResult(result);
+
+  // 【工程6追加】おやこチャレンジ中は、通常の結果画面(弱点判定つき)ではなく、
+  // チャレンジ専用の「1人ぶんの結果→交代→チームスコア」の流れに進む
+  if (challengeActive) {
+    handleChallengeTurnResult(result);
+  } else {
+    showResult(result);
+  }
 }
 
 // ---------- 自己相関法(Pitchyの予備。工程2と同じ) ----------
@@ -1387,6 +1487,133 @@ retryBtn.addEventListener("click", () => {
 backBtn.addEventListener("click", () => {
   previousTotal = null; // 【工程5追加】
   showScreen("start");
+  startStatus.textContent = "まずは おてほんを きいてみよう";
+});
+
+/* =========================================================
+   工程6:おやこチャレンジ
+   ・「おやこチャレンジ」ボタン→おとなが歌う→3びょうだけ結果→「こうたい!」
+     →こどもが歌う→3びょうだけ結果→おやこチームスコア発表、という流れ
+   ・チームスコア=2人の合計点のみ。個人どうしを比べる表示は絶対に出さない
+   ・こどもの番だけ「こどものたかさ」ボタンでお手本を1オクターブ上げて聞ける
+     (聞こえ方だけが変わり、採点には影響しない)
+   ・このモードで録音した声も、これまでどおり端末内でのみ処理し、外部送信は一切しない
+   ========================================================= */
+
+// ---------- チャレンジ中の「スタート画面」を、指定した人の番として表示しなおす ----------
+function startChallengeTurnScreen(turn) {
+  challengeTurn = turn;
+  challengeBanner.style.display = "block";
+  challengeStartBtn.style.display = "none"; // チャレンジ中はふつうの入り口ボタンを隠す
+  if (turn === "child") {
+    challengeBannerText.textContent = "こどもの ばん!";
+    childHeightBtn.style.display = "block";
+  } else {
+    challengeBannerText.textContent = "おとなの ばん!";
+    childHeightBtn.style.display = "none";
+  }
+  showScreen("start");
+  startStatus.classList.remove("error");
+  startStatus.textContent = "まずは おてほんを きいてみよう";
+}
+
+// 「おやこチャレンジ👨‍👧」ボタン:1回目はかならず、おとなの番から始める
+challengeStartBtn.addEventListener("click", () => {
+  challengeActive = true;
+  parentScore = null;
+  childScore = null;
+  startChallengeTurnScreen("parent");
+});
+
+// 【工程6追加】「こどものたかさ」ボタン:お手本の聞こえる高さだけを切り替える
+childHeightBtn.addEventListener("click", () => {
+  challengeChildOctaveUp = !challengeChildOctaveUp;
+  childHeightBtn.textContent = "🧒 こどものたかさ:" + (challengeChildOctaveUp ? "ON" : "OFF");
+});
+
+// ---------- 1人ぶん歌い終わったあとの処理(結果を3びょうだけ見せて、次に進む) ----------
+function handleChallengeTurnResult(result) {
+  if (result.noVoice) {
+    // 声がじゅうぶん録れなかったときは、責めずに同じ人の番からもう一度やり直してもらう
+    startStatus.classList.add("error");
+    startStatus.textContent = "こえが とどかなかったみたい。もういちど ためしてね!";
+    showScreen("start");
+    return;
+  }
+  startStatus.classList.remove("error");
+
+  if (challengeTurn === "parent") {
+    parentScore = result.total;
+    challengeResultLabel.textContent = "おとなの けっか";
+  } else {
+    childScore = result.total;
+    challengeResultLabel.textContent = "こどもの けっか";
+  }
+  challengeResultEmoji.textContent = result.total >= 60 ? "🎉" : "👏";
+  challengeResultScore.textContent = result.total;
+  showScreen("challengeTurnResult");
+
+  // 【設計書どおり】個人の結果は3びょうだけ表示し、勝ち負けの比較はせずすぐ次へ進む
+  setTimeout(() => {
+    if (challengeTurn === "parent") {
+      handoffNextText.textContent = "つぎは こどもの ばん!";
+      showScreen("challengeHandoff");
+    } else {
+      showChallengeTeamResult();
+    }
+  }, 3000);
+}
+
+// 「こうたい!」画面の大ボタン:タップしたら、こどもの番の画面へ切り替える
+// (端末を手渡すタイミングが分かるよう、手渡しが終わってからタップしてもらう想定)
+handoffContinueBtn.addEventListener("click", () => {
+  startChallengeTurnScreen("child");
+});
+
+// ---------- おやこチームスコアの発表 ----------
+function showChallengeTeamResult() {
+  const teamTotal = parentScore + childScore;
+  teamScoreNum.textContent = teamTotal;
+
+  // 【設計書どおり】2人の点数を並べて比較する表示は絶対にしない。合計と前回との差分だけ見せる
+  if (previousTeamTotal !== null) {
+    const diff = teamTotal - previousTeamTotal;
+    if (diff > 0) {
+      teamCompareText.textContent = "チームスコアが " + diff + "てん アップ⤴️!";
+    } else if (diff === 0) {
+      teamCompareText.textContent = "きろくを キープ できたね!";
+    } else {
+      // 下がっても否定しない。前向きな言葉で締める(設計書のルールどおり)
+      teamCompareText.textContent = "かなり ちかづいて きたよ!";
+    }
+    teamCompareBox.style.display = "block";
+  } else {
+    teamCompareBox.style.display = "none";
+  }
+
+  showScreen("challengeTeam");
+}
+
+// 「もういちど 2にんで うたう」:今回のチームスコアを基準にして、おとなの番からやり直す
+challengeRetryBtn.addEventListener("click", () => {
+  previousTeamTotal = parentScore + childScore;
+  parentScore = null;
+  childScore = null;
+  startChallengeTurnScreen("parent");
+});
+
+// 「おやこチャレンジを おわる」:ふつうの ひとり練習画面に戻す
+challengeEndBtn.addEventListener("click", () => {
+  challengeActive = false;
+  challengeTurn = null;
+  previousTeamTotal = null;
+  challengeChildOctaveUp = false;
+  childHeightBtn.textContent = "🧒 こどものたかさ:OFF";
+  challengeBanner.style.display = "none";
+  childHeightBtn.style.display = "none";
+  challengeStartBtn.style.display = "block";
+  showScreen("start");
+  startStatus.classList.remove("error");
   startStatus.textContent = "まずは おてほんを きいてみよう";
 });
 
