@@ -163,6 +163,31 @@
     margin-bottom: 4px;
   }
 
+  /* 難易度えらびボタン */
+  .level-row {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-bottom: 14px;
+  }
+  .level-btn {
+    flex: 1;
+    height: 52px;
+    border: 3px solid #d3d3d3;
+    border-radius: 14px;
+    font-size: 17px;
+    font-weight: bold;
+    color: #888;
+    background: #ffffff;
+    cursor: pointer;
+  }
+  /* 選ばれている難易度は色つきで目立たせる */
+  .level-btn.selected {
+    border-color: #ff9f43;
+    background: #fff3e0;
+    color: #e07b00;
+  }
+
   /* 音ごとの星表示(結果画面) */
   .note-stars {
     display: flex;
@@ -213,6 +238,11 @@
       <div class="note-circle c0" id="noteC0">ド</div>
       <div class="note-circle c1" id="noteC1">レ</div>
       <div class="note-circle c2" id="noteC2">ミ</div>
+    </div>
+    <!-- 難易度えらび:やさしい=小さい子向け(合格の幅が広い)/ふつう -->
+    <div class="level-row">
+      <button class="level-btn" id="levelEasy">🐣 やさしい</button>
+      <button class="level-btn" id="levelNormal">🎵 ふつう</button>
     </div>
     <button class="mid-btn" id="listenBtn">▶️ きく</button>
     <button class="big-btn" id="singBtn">🎤 うたってみる</button>
@@ -337,6 +367,50 @@ let isRecording = false;
 let recordStartTime = 0;
 // 録音中に集めるピッチの記録。{ time: 録音開始からの秒数, freq: 周波数 } の配列
 let pitchSamples = [];
+
+// ---------- 難易度(やさしい/ふつう) ----------
+// やさしい:小さい子向け。合格の幅を広げ、点数の下限も高くする
+// 選んだ難易度はlocalStorage(端末内の保存場所)に覚えさせる。外部には送らない
+const LEVELS = {
+  easy: {
+    fullBand: 240,   // このセント数までのズレは満点(ふつうの2倍の広さ)
+    halfBand: 450,   // ここまでは「おしい」
+    halfScore: 75,   // 「おしい」の点数
+    farScore: 55,    // 大きくズレたときの点数(それでも半分以上)
+    quietScore: 55,  // 声が少なかった区間の点数
+    stableFree: 260, // 安定性:このブレ幅までは満点
+    stableMin: 55    // 安定性の最低点
+  },
+  normal: {
+    fullBand: 120,
+    halfBand: 260,
+    halfScore: 60,
+    farScore: 35,
+    quietScore: 40,
+    stableFree: 180,
+    stableMin: 40
+  }
+};
+let currentLevel = localStorage.getItem("utakko_level") || "easy"; // 初期値はやさしい
+
+const levelEasyBtn = document.getElementById("levelEasy");
+const levelNormalBtn = document.getElementById("levelNormal");
+
+function updateLevelButtons() {
+  levelEasyBtn.classList.toggle("selected", currentLevel === "easy");
+  levelNormalBtn.classList.toggle("selected", currentLevel === "normal");
+}
+levelEasyBtn.addEventListener("click", () => {
+  currentLevel = "easy";
+  localStorage.setItem("utakko_level", currentLevel);
+  updateLevelButtons();
+});
+levelNormalBtn.addEventListener("click", () => {
+  currentLevel = "normal";
+  localStorage.setItem("utakko_level", currentLevel);
+  updateLevelButtons();
+});
+updateLevelButtons();
 
 // ---------- 画面切り替え ----------
 function showScreen(name) {
@@ -609,6 +683,9 @@ function calculateScore(samples) {
     return { noVoice: true };
   }
 
+  // いま選ばれている難易度の設定値を使う
+  const lv = LEVELS[currentLevel];
+
   // 録音3秒を3等分し、各区間のサンプルを分ける
   const segments = [[], [], []];
   samples.forEach(s => {
@@ -621,18 +698,17 @@ function calculateScore(samples) {
   const segmentResults = segments.map((segFreqs, i) => {
     if (segFreqs.length < 3) {
       // その区間に声がほぼない場合。0点にはせず「ひかえめな点」にする(甘め採点)
-      return { score: 40, centsDiff: null, avgFreq: null };
+      return { score: lv.quietScore, centsDiff: null, avgFreq: null };
     }
     const avgFreq = segFreqs.reduce((a, b) => a + b, 0) / segFreqs.length;
     const centsDiff = freqToCentsDiff(avgFreq, TARGET_NOTES[i].freq);
     const absDiff = Math.abs(centsDiff);
 
-    // 半音以内(100セント)=満点/1音以内(200セント)=半分/それ以上=低め
-    // 甘め調整:境界を少し広げ(120/260)、「半分」も60点、「低め」も35点にする
+    // ズレの大きさを難易度ごとの幅で点数に変換
     let score;
-    if (absDiff <= 120) score = 100;
-    else if (absDiff <= 260) score = 60;
-    else score = 35;
+    if (absDiff <= lv.fullBand) score = 100;
+    else if (absDiff <= lv.halfBand) score = lv.halfScore;
+    else score = lv.farScore;
     return { score, centsDiff, avgFreq };
   });
 
@@ -644,13 +720,11 @@ function calculateScore(samples) {
   const mean = allCents.reduce((a, b) => a + b, 0) / allCents.length;
   const variance = allCents.reduce((a, c) => a + (c - mean) * (c - mean), 0) / allCents.length;
   const stdDev = Math.sqrt(variance);
-  // 注意:ド→レ→ミと音が変わること自体でブレ幅は大きくなるので、
-  // その分(メロディーの動きぶん)を差し引いた基準で甘めに判定する
-  // stdDev 180セント以下なら満点、そこから緩やかに下げ、最低でも40点
+  // ド→レ→ミと音が動くぶんのブレは差し引いた基準で、難易度に応じて甘めに判定
   let stabilityScore;
-  if (stdDev <= 180) stabilityScore = 100;
-  else if (stdDev <= 400) stabilityScore = 100 - (stdDev - 180) * (60 / 220);
-  else stabilityScore = 40;
+  if (stdDev <= lv.stableFree) stabilityScore = 100;
+  else if (stdDev <= 400) stabilityScore = 100 - (stdDev - lv.stableFree) * ((100 - lv.stableMin) / (400 - lv.stableFree));
+  else stabilityScore = lv.stableMin;
 
   // 総合点 = 音程70% + 安定性30%
   const total = Math.round(pitchScore * 0.7 + stabilityScore * 0.3);
@@ -723,6 +797,7 @@ function showResult(result) {
 
   // 音ごとの星表示:⭐=ばっちり(満点)、☆=おしい(あと少し)
   // ×や赤は使わない。「おしい」も星の仲間として見せる
+  // やさしいモードでは満点の幅が広いので、自然と⭐が付きやすくなる
   const noteNamesShort = ["ド", "レ", "ミ"];
   result.segmentResults.forEach((seg, i) => {
     const item = document.createElement("div");
