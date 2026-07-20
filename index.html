@@ -333,15 +333,39 @@
    ========================================================= */
 
 // ---------- Pitchy(ピッチ解析ライブラリ)の読み込み。失敗したら自前の自己相関法に切り替え ----------
+// 【修正】以前はここで await して読み込み完了を待っていたが、
+// その間ボタンなど画面の準備が一切進まず、読み込みが遅い回線や
+// iOS 14以前のSafari(トップレベルawait未対応)では画面全体が固まってしまっていた。
+// → import()の完了を待たずに先へ進み、Pitchyは裏で読み込む形に変更。
+// 読み込みが終わる前に「うたってみる」が押された場合は、自己相関法(自前の代替ロジック)を使う。
+// Pitchy: 声の高さ(周波数)を解析してくれる部品(ライブラリ)。
+// 自己相関法: Pitchyが使えないときの代わりの解析方法(精度はやや落ちるが動く)。
 let PitchDetector = null;
 let usingFallback = false;
-try {
-  const pitchyModule = await import("https://esm.sh/pitchy@4");
-  PitchDetector = pitchyModule.PitchDetector;
-} catch (e) {
+let pitchyLoaded = false; // 読み込みが完了したかどうかのフラグ
+
+// 3秒以内にPitchyの読み込みが終わらなければ、自己相関法を使うことを確定する
+const pitchyTimeoutId = setTimeout(() => {
+  if (!pitchyLoaded) {
+    usingFallback = true;
+    console.log("Pitchyの読み込みに3秒以上かかったため、自己相関法に切り替えます");
+  }
+}, 3000);
+
+import("https://esm.sh/pitchy@4").then(pitchyModule => {
+  pitchyLoaded = true;
+  clearTimeout(pitchyTimeoutId);
+  if (!usingFallback) {
+    // まだタイムアウトしていなければPitchyを採用する
+    PitchDetector = pitchyModule.PitchDetector;
+  }
+  // すでにタイムアウトで自己相関法に切り替わっていた場合は、
+  // 読み込みが遅れて届いてもそのまま自己相関法を使い続ける(挙動を安定させるため)
+}).catch(e => {
   usingFallback = true;
+  clearTimeout(pitchyTimeoutId);
   console.log("Pitchy読み込み失敗。自己相関法(自前実装)を使います", e);
-}
+});
 
 // ---------- お手本の設定 ----------
 // ド・レ・ミの周波数(Hz)。設計書の数値どおり
@@ -358,6 +382,10 @@ const MIN_FREQ = 70;    // 検出する声の下限(大人の低い声)
 const MAX_FREQ = 1050;  // 検出する声の上限(子どもの高い声)
 const VOLUME_THRESHOLD = 0.015;  // これ未満の音量は無音とみなす(0.01=雑音を拾いすぎ、0.02=声を逃しすぎ、の中間に調整)
 const CLARITY_THRESHOLD = 0.85;  // Pitchyの「確からしさ」の合格ライン
+// 【修正】録音開始と同時に鳴る「3・2・1・ラー!」の合図音(880Hz)を、
+// echoCancellationをオフにしたマイクがそのまま拾ってしまい、
+// 最初の区間(ド)の採点が狂う場合がある。開始直後0.35秒ぶんはピッチ記録から除外する。
+const RECORD_START_GUARD_SEC = 0.35;
 
 // ---------- 画面の部品 ----------
 const screens = {
@@ -652,9 +680,12 @@ function recordLoop() {
       const result = autoCorrelate(inputBuffer, audioContext.sampleRate);
       freq = result.freq; clarity = result.clarity;
     }
-    if (freq > 0 && clarity >= CLARITY_THRESHOLD && freq >= MIN_FREQ && freq <= MAX_FREQ) {
+    const sampleTime = audioContext.currentTime - recordStartTime;
+    // 開始合図音(880Hz)が録れてしまう最初の0.35秒ぶんは、判定から除外する
+    if (sampleTime >= RECORD_START_GUARD_SEC &&
+        freq > 0 && clarity >= CLARITY_THRESHOLD && freq >= MIN_FREQ && freq <= MAX_FREQ) {
       pitchSamples.push({
-        time: audioContext.currentTime - recordStartTime,
+        time: sampleTime,
         freq: freq
       });
     }
@@ -715,8 +746,10 @@ function freqToCentsDiff(freq, targetFreq) {
 function calculateScore(samples) {
   // 声がじゅうぶん録れていなかった場合は採点しない。
   // 【調整メモ】10個=雑音でも点が出てしまう/40個=小さめの歌声まで「--」になってしまう。
-  // 中間の25個(3秒中およそ0.4秒ぶんの声)を基準にする
-  if (samples.length < 25) {
+  // 中間の25個(3秒中およそ0.4秒ぶんの声)を基準にしていたが、
+  // 開始直後0.35秒ぶんを合図音よけとして除外するようになったため、
+  // その分だけ声のサンプル数が自然に減る。除外ぶんで不利にならないよう20個に調整する
+  if (samples.length < 20) {
     return { noVoice: true };
   }
 
