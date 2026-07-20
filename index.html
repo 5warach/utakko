@@ -331,7 +331,16 @@
     font-size: 34px;
     transition: left 0.15s linear;
   }
-  /* 【修正3追加】1回ごとのごほうび表示 */
+  /* 【今回追加】あと何回あるかを見せる進み表示(●○○) */
+  .round-dots {
+    text-align: center;
+    font-size: 22px;
+    letter-spacing: 10px;
+    margin: 2px 0 8px 0;
+  }
+  .dot-filled { color: #ff9f43; }
+  .dot-empty { color: #ddd; }
+
   .practice-reward {
     font-size: 19px;
     font-weight: bold;
@@ -435,10 +444,12 @@
 
     <!-- 「ひくい/たかい/この音だけ」用:1音まねっこ練習の表示。丸には的の音名だけを表示する -->
     <div id="mimicArea" style="display:none; width:100%;">
+      <!-- 【今回追加】あと何回あるかが一目で分かる進み表示(1回目終了で●、未実施は○) -->
+      <div class="round-dots" id="roundDots"></div>
       <div class="notes-row center-row">
         <div class="note-circle c1" id="mimicCircle">レ</div>
       </div>
-      <!-- 【修正1】道に乗っている時間がその場でたまっていくゲージ -->
+      <!-- 道に乗っている時間がその場でたまっていくゲージ -->
       <div class="practice-gauge"><div class="practice-gauge-fill" id="mimicGaugeFill"></div></div>
       <div class="note-stars center-row" id="mimicStars"></div>
       <p class="practice-hint">おてほんと おなじ たかさで「ラー」と うたってみよう(3かい ちょうせん)</p>
@@ -472,6 +483,8 @@
 
     <!-- 練習が終わると、いちばん大きなボタンでもう一度の挑戦へ誘導する -->
     <button class="big-btn glow-btn" id="practiceRetryBtn" style="display:none;">🎤 もういちど うたって きろく こうしんに ちょうせん!</button>
+    <!-- 【今回追加】同じ練習をもう一度だけやり直したいとき用(⭐・進み表示はリセットされる) -->
+    <button class="mid-btn" id="practiceAgainBtn" style="display:none;">🎮 もういちど れんしゅう</button>
     <button class="text-btn" id="weaknessBackBtn">けっかがめんへ もどる</button>
   </div>
 
@@ -573,11 +586,13 @@ const weaknessTitle = document.getElementById("weaknessTitle");
 const mimicArea = document.getElementById("mimicArea");
 const mimicCircle = document.getElementById("mimicCircle");
 const mimicStars = document.getElementById("mimicStars");
+const roundDots = document.getElementById("roundDots"); // 【今回追加】あと何回あるかの進み表示
 const longtoneArea = document.getElementById("longtoneArea");
 const practiceStatus = document.getElementById("practiceStatus");
 const practiceListenBtn = document.getElementById("practiceListenBtn");
 const practiceStartBtn = document.getElementById("practiceStartBtn");
 const practiceRetryBtn = document.getElementById("practiceRetryBtn");
+const practiceAgainBtn = document.getElementById("practiceAgainBtn"); // 【今回追加】もういちどれんしゅう
 const weaknessBackBtn = document.getElementById("weaknessBackBtn");
 // 【今回追加】ゲージ・ふうせんゲーム・ごほうび表示の部品
 const mimicGaugeFill = document.getElementById("mimicGaugeFill");
@@ -1412,6 +1427,17 @@ function updateMimicStars(matched) {
   mimicStars.appendChild(span);
 }
 
+// 【今回追加】あと何回あるかの進み表示を更新する(completed回ぶん●、残りは○)
+function updateRoundDots(completed, total) {
+  let html = "";
+  for (let i = 0; i < total; i++) {
+    html += i < completed
+      ? '<span class="dot-filled">●</span>'
+      : '<span class="dot-empty">○</span>';
+  }
+  roundDots.innerHTML = html;
+}
+
 // 画面を切り替えずに、練習画面の中だけで「3・2・1・ラー!」を進める
 function runPracticeCountdown(from) {
   return new Promise(resolve => {
@@ -1515,6 +1541,7 @@ function runLiveMimicRound(targetFreq, targetNoteName, durationSec) {
 async function runMimicPractice(targetFreq, targetNoteName) {
   let clearCount = 0;
   for (let i = 0; i < MIMIC_ROUNDS; i++) {
+    updateRoundDots(i, MIMIC_ROUNDS); // 【今回追加】今なんかい目かを見せる
     practiceStatus.textContent = (i + 1) + "かいめ:きいて まねしよう";
     practiceReward.textContent = "";
     mimicCircle.classList.add("playing");
@@ -1535,8 +1562,9 @@ async function runMimicPractice(targetFreq, targetNoteName) {
     const matched = matchedSeconds >= MIMIC_CLEAR_SEC;
     if (matched) clearCount++;
     updateMimicStars(matched);
+    updateRoundDots(i + 1, MIMIC_ROUNDS); // 【今回追加】この回が終わったことを反映する
 
-    // 【修正3】その場のごほうび:道に乗っていた時間を数字で見せる(伸びていれば差分も)
+    // その場のごほうび:道に乗っていた時間を数字で見せる(伸びていれば差分も)
     let rewardText = "みちに のってた じかん " + matchedSeconds.toFixed(1) + "びょう!";
     if (lastMimicRoundTime !== null && matchedSeconds - lastMimicRoundTime > 0.05) {
       rewardText += " +" + (matchedSeconds - lastMimicRoundTime).toFixed(1) + "びょう!";
@@ -1550,6 +1578,11 @@ async function runMimicPractice(targetFreq, targetNoteName) {
   practiceStatus.textContent = clearCount >= 1
     ? "よく がんばったね!すごい ちょうせんだったよ!"
     : "たくさん ちょうせん できたね!すごいよ!";
+  await wait(1000);
+  // 【今回追加】急にボタンが出て驚かないよう、「おしまい」をひと呼吸見せてから終わる
+  // (⭐のまとめは上のnote-starsにそのまま残っているので、あわせて見える)
+  practiceStatus.textContent = "れんしゅう おしまい!";
+  await wait(1000);
 }
 
 // ---------- 「ふうせんゲーム」(ロングトーン練習):声を出すだけでも進む・安定でもっと進む ----------
@@ -1687,7 +1720,7 @@ async function runLongTonePractice(targetFreq, targetNoteName) {
   practiceReward.textContent = rewardText;
   lastLongtoneTime = voiceSeconds;
 
-  // 【修正3】結果の文言を、実際のふうせんの位置と一致させる
+  // 結果の文言を、実際のふうせんの位置と一致させる
   if (reachedGoal) {
     practiceStatus.textContent = "ゴール!🎉";
   } else if (progress >= 0.7) {
@@ -1695,12 +1728,17 @@ async function runLongTonePractice(targetFreq, targetNoteName) {
   } else {
     practiceStatus.textContent = "こえが しっかり きこえたよ!つぎは もっと ながく のばしてみよう!";
   }
+  await wait(1000);
+  // 【今回追加】急にボタンが出て驚かないよう、「おしまい」をひと呼吸見せてから終わる
+  practiceStatus.textContent = "れんしゅう おしまい!";
+  await wait(1000);
 }
 
 
 // ---------- 弱点にあわせて練習画面をセットアップする ----------
 function setupPracticeScreen(w) {
   practiceRetryBtn.style.display = "none";
+  practiceAgainBtn.style.display = "none"; // 【今回追加】
   practiceStartBtn.style.display = "block";
   practiceListenBtn.style.display = "block";
   practiceStatus.textContent = "じゅんびが できたら はじめよう";
@@ -1708,10 +1746,11 @@ function setupPracticeScreen(w) {
   practiceWaveArea.style.display = "none";
   practiceReward.textContent = "";
   mimicStars.innerHTML = "";
+  updateRoundDots(0, MIMIC_ROUNDS); // 【今回追加】進み表示を最初から(●○○)に戻す
   mimicGaugeFill.style.width = "0%";
   balloonIcon.style.left = "5%";
   practiceRoadWrap.style.display = "none"; // モードが決まってから表示する
-  practiceCancelled = false; // 【今回追加】新しい練習を始めるので、キャンセル状態をリセット
+  practiceCancelled = false; // 新しい練習を始めるので、キャンセル状態をリセット
 
   let targetFreq = TARGET_NOTES[1].freq; // 基本は「レ」の高さで練習する
   let targetNoteName = TARGET_NOTES[1].name; // 丸・道に表示する音名
@@ -1782,6 +1821,7 @@ function setupPracticeScreen(w) {
     }
     stopMic(); // 練習が終わったらマイクを止める(使用中マークを消す)
     practiceRetryBtn.style.display = "block";
+    practiceAgainBtn.style.display = "block"; // 【今回追加】
   };
 }
 
@@ -1799,6 +1839,13 @@ practiceBtn.addEventListener("click", () => {
 practiceRetryBtn.addEventListener("click", () => {
   showScreen("start");
   setTimeout(() => singBtn.click(), 100);
+});
+
+// 【今回追加】「もういちど れんしゅう」:同じ練習を最初からやり直す。
+// previousTotal(本番再挑戦との点数比較のもと)はここではリセットしない
+practiceAgainBtn.addEventListener("click", () => {
+  if (!currentWeakness) return;
+  setupPracticeScreen(currentWeakness);
 });
 
 // 結果画面へ戻る(練習を最後までやらずに戻る場合。比較の基準点もリセットする)
