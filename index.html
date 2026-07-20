@@ -163,6 +163,24 @@
     margin-bottom: 4px;
   }
 
+  /* 音ごとの星表示(結果画面) */
+  .note-stars {
+    display: flex;
+    gap: 12px;
+    margin: 4px 0 16px 0;
+  }
+  .note-star-item {
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+    padding: 10px 14px;
+    text-align: center;
+    font-size: 17px;
+    font-weight: bold;
+    color: #666;
+  }
+  .note-star-item .star { font-size: 26px; display: block; }
+
   .status {
     width: 100%;
     text-align: center;
@@ -218,6 +236,8 @@
   <div class="screen" id="screenResult">
     <div class="celebrate" id="celebrateEmoji"></div>
     <div class="score-big"><span id="scoreNum">0</span><span class="score-unit">てん</span></div>
+    <!-- 音ごとの結果(⭐=ばっちり、☆=おしい)。どの音を直せばいいか一目で分かる -->
+    <div class="note-stars" id="noteStars"></div>
     <div class="feedback-box">
       <span class="label">🌟 よかったところ</span>
       <span id="goodPoint"></span>
@@ -263,7 +283,7 @@ const RECORD_SECONDS = 3.0;  // 録音時間(秒)= 3音ぶん
 // ---------- 解析まわりの設定(工程2と同じ) ----------
 const MIN_FREQ = 70;    // 検出する声の下限(大人の低い声)
 const MAX_FREQ = 1050;  // 検出する声の上限(子どもの高い声)
-const VOLUME_THRESHOLD = 0.01;   // これ未満の音量は無音とみなす
+const VOLUME_THRESHOLD = 0.02;   // これ未満の音量は無音とみなす(雑音対策で0.01から引き上げ)
 const CLARITY_THRESHOLD = 0.85;  // Pitchyの「確からしさ」の合格ライン
 
 // ---------- 画面の部品 ----------
@@ -558,8 +578,12 @@ function freqToCentsDiff(freq, targetFreq) {
 }
 
 function calculateScore(samples) {
-  // 声がほとんど録れていなかった場合(無音など)は採点しない
-  if (samples.length < 10) {
+  // 声がじゅうぶん録れていなかった場合は採点しない。
+  // 【修正】以前は「10個以上」で採点していたが、部屋の物音だけでも
+  // 10個くらいは記録されてしまい、歌っていないのに点が出る問題があった。
+  // 3秒の録音では、歌っていれば100個以上は記録されるので、
+  // 「40個未満=声と呼べる量がない」として案内画面に回す
+  if (samples.length < 40) {
     return { noVoice: true };
   }
 
@@ -656,21 +680,35 @@ function makeFeedback(result) {
 }
 
 // ---------- 結果表示 ----------
+const noteStarsArea = document.getElementById("noteStars");
+
 function showResult(result) {
   showScreen("result");
+  noteStarsArea.innerHTML = ""; // 前回の星表示をリセット
 
   if (result.noVoice) {
     // 声が録れていなかった場合。責めずに、やり方をやさしく案内する
     celebrateEmoji.textContent = "🎤";
     scoreNum.textContent = "--";
     goodPoint.textContent = "ちょうせん できたね!";
-    nextPoint.textContent = "こえが とどかなかったみたい。マイクに ちかづいて おおきな こえで うたってみよう!";
+    nextPoint.textContent = "こえが とどかなかったみたい。マイクに ちかづいて、おてほんと おなじ たかさで「ドードー・レーレー・ミーミー」と うたってみよう!";
     return;
   }
 
   // 総合点の表示と演出(60点以上でお祝い。それ未満でも拍手=否定しない)
   scoreNum.textContent = result.total;
   celebrateEmoji.textContent = result.total >= 60 ? "🎉✨🎊" : "👏😊";
+
+  // 音ごとの星表示:⭐=ばっちり(満点)、☆=おしい(あと少し)
+  // ×や赤は使わない。「おしい」も星の仲間として見せる
+  const noteNamesShort = ["ド", "レ", "ミ"];
+  result.segmentResults.forEach((seg, i) => {
+    const item = document.createElement("div");
+    item.className = "note-star-item";
+    const star = seg.score >= 100 ? "⭐" : "☆";
+    item.innerHTML = '<span class="star">' + star + '</span>' + noteNamesShort[i];
+    noteStarsArea.appendChild(item);
+  });
 
   const fb = makeFeedback(result);
   goodPoint.textContent = fb.good;
