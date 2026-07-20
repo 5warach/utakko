@@ -551,6 +551,10 @@ const CLARITY_THRESHOLD = 0.85;  // Pitchyの「確からしさ」の合格ラ�
 // echoCancellationをオフにしたマイクがそのまま拾ってしまい、
 // 最初の区間(ド)の採点が狂う場合がある。開始直後0.35秒ぶんはピッチ記録から除外する。
 const RECORD_START_GUARD_SEC = 0.35;
+// 【今回追加】歌い出し検出:音量がこの秒数以上、連続でしきい値を超えたら「歌い出し」とみなす
+const ONSET_HOLD_SEC = 0.15;
+// 【今回追加】歌い出しにあわせて採点区間をずらす量の上限(録音の余裕1秒の範囲内に収める)
+const MAX_ONSET_SHIFT_SEC = 0.9;
 
 // ---------- 画面の部品 ----------
 const screens = {
@@ -634,6 +638,11 @@ let isRecording = false;
 let recordStartTime = 0;
 // 録音中に集めるピッチの記録。{ time: 録音開始からの秒数, freq: 周波数 } の配列
 let pitchSamples = [];
+// 【今回追加】歌い出し(音量がしきい値を0.15秒以上連続で超えた時点)の検出用
+let voiceOnsetTime = null;      // 検出できた「歌い出し」の時刻(ガード基準の秒数)。未検出ならnull
+let aboveThresholdSince = null; // 音量がしきい値を超え続けている開始時刻(内部用)
+// 今回の録音で実際に使う「採点区間の開始時刻」。歌い出しに合わせてずらした値(音の道の表示にも使う)
+let scoringStartTime = RECORD_START_GUARD_SEC;
 
 // 【工程5追加】直前の採点結果(弱点判定・比較表示に使う。端末内のみで保持し、外部には送らない)
 let lastResult = null;
@@ -847,6 +856,8 @@ const recNotes = [
 function startRecording() {
   showScreen("recording");
   pitchSamples = [];
+  voiceOnsetTime = null;      // 【今回追加】新しい録音のたびに歌い出し検出をリセット
+  aboveThresholdSince = null; // 【今回追加】
   isRecording = true;
   recordStartTime = audioContext.currentTime;
   recordLoop();
@@ -888,6 +899,21 @@ function recordLoop() {
     bar.style.height = Math.min(h, 80) + "px";
   });
 
+  const sampleTime = audioContext.currentTime - recordStartTime;
+
+  // 【今回追加】歌い出しの検出:ガード終了後、音量がしきい値を0.15秒以上連続で超えた
+  // 最初の時点を「歌い出し」とする(ピッチが検出できたかどうかは関係なく、音量だけで見る)
+  if (sampleTime >= RECORD_START_GUARD_SEC) {
+    if (rms >= VOLUME_THRESHOLD) {
+      if (aboveThresholdSince === null) aboveThresholdSince = sampleTime;
+      if (voiceOnsetTime === null && sampleTime - aboveThresholdSince >= ONSET_HOLD_SEC) {
+        voiceOnsetTime = aboveThresholdSince;
+      }
+    } else {
+      aboveThresholdSince = null; // 音量が途切れたら、連続時間の計測をやり直す
+    }
+  }
+
   // ピッチを解析して記録
   if (rms >= VOLUME_THRESHOLD) {
     let freq = -1, clarity = 0;
@@ -898,7 +924,6 @@ function recordLoop() {
       const result = autoCorrelate(inputBuffer, audioContext.sampleRate);
       freq = result.freq; clarity = result.clarity;
     }
-    const sampleTime = audioContext.currentTime - recordStartTime;
     // 開始合図音(880Hz)が録れてしまう最初の0.35秒ぶんは、判定から除外する
     if (sampleTime >= RECORD_START_GUARD_SEC &&
         freq > 0 && clarity >= CLARITY_THRESHOLD && freq >= MIN_FREQ && freq <= MAX_FREQ) {
@@ -923,8 +948,19 @@ function stopRecording() {
     mediaStream = null;
   }
 
+  // 【今回追加】歌い出しにあわせて、採点区間の開始位置をずらす(上限0.9秒)。
+  // 歌い出しが検出できなかった場合は、採点区間はガード終了時点のまま
+  // (calculateScore側で「こえが とどかなかったみたい」として扱われる)
+  const onsetDetected = voiceOnsetTime !== null;
+  if (onsetDetected) {
+    const delay = Math.min(Math.max(voiceOnsetTime - RECORD_START_GUARD_SEC, 0), MAX_ONSET_SHIFT_SEC);
+    scoringStartTime = RECORD_START_GUARD_SEC + delay;
+  } else {
+    scoringStartTime = RECORD_START_GUARD_SEC;
+  }
+
   // 採点して結果画面へ
-  const result = calculateScore(pitchSamples);
+  const result = calculateScore(pitchSamples, scoringStartTime, onsetDetected);
   showResult(result);
 }
 
@@ -961,23 +997,27 @@ function freqToCentsDiff(freq, targetFreq) {
   return cents;
 }
 
-function calculateScore(samples) {
+function calculateScore(samples, segStart, onsetDetected) {
   // 声がじゅうぶん録れていなかった場合は採点しない。
   // 【調整メモ】10個=雑音でも点が出てしまう/40個=小さめの歌声まで「--」になってしまう。
   // 中間の25個(3秒中およそ0.4秒ぶんの声)を基準にしていたが、
   // 開始直後0.35秒ぶんを合図音よけとして除外するようになったため、
   // その分だけ声のサンプル数が自然に減る。除外ぶんで不利にならないよう20個に調整する
-  if (samples.length < 20) {
+  // 【今回追加】歌い出しが検出できなかった場合(ずっと無音など)も、今までどおり「こえが とどかなかったみたい」の扱いにする
+  if (!onsetDetected || samples.length < 20) {
     return { noVoice: true };
   }
 
   // いま選ばれている難易度の設定値を使う
   const lv = LEVELS[currentLevel];
 
-  // 録音3秒を3等分し、各区間のサンプルを分ける
+  // 【今回修正】録音を0秒からではなく、歌い出し(segStart)から3等分し、各区間のサンプルを分ける。
+  // 合図から声を出すまでの反応時間ぶん、採点区間がズレていた問題への対応
+  const segLen = (RECORD_SECONDS - segStart) / 3;
   const segments = [[], [], []];
   samples.forEach(s => {
-    let idx = Math.floor(s.time / (RECORD_SECONDS / 3));
+    if (s.time < segStart) return; // 歌い出し前(反応時間ぶん)は、どの区間にも数えない
+    let idx = Math.floor((s.time - segStart) / segLen);
     if (idx > 2) idx = 2;
     segments[idx].push(s.freq);
   });
@@ -1112,16 +1152,22 @@ const RAIL_CENTS = [0, 200, 400];
 
 // 録音サンプルを描画用に変換する(セント値に直し、オクターブ差は折りたたむ)
 function prepareRoadData(samples) {
-  return samples.map(s => {
-    const segIdx = Math.min(Math.floor(s.time / (RECORD_SECONDS / 3)), 2);
-    // その区間のお手本の音を基準に、±600セントに折りたたんだズレを計算
-    const diff = freqToCentsDiff(s.freq, TARGET_NOTES[segIdx].freq);
-    return {
-      time: s.time,
-      cents: RAIL_CENTS[segIdx] + diff, // 道の高さ+ズレぶん=ボールの高さ
-      matched: Math.abs(diff) <= LEVELS[currentLevel].fullBand // 合っていたか
-    };
-  });
+  // 【今回修正】採点(calculateScore)と同じく、歌い出し(scoringStartTime)から3等分する
+  const segLen = (RECORD_SECONDS - scoringStartTime) / 3;
+  return samples
+    .filter(s => s.time >= scoringStartTime) // 歌い出し前(反応時間ぶん)は道にも描かない
+    .map(s => {
+      let segIdx = Math.floor((s.time - scoringStartTime) / segLen);
+      if (segIdx > 2) segIdx = 2;
+      // その区間のお手本の音を基準に、±600セントに折りたたんだズレを計算
+      const diff = freqToCentsDiff(s.freq, TARGET_NOTES[segIdx].freq);
+      return {
+        // 【今回修正・修正1】歌い出し時点を0とすることで、道の左端から軌跡が描かれるようにする
+        time: s.time - scoringStartTime,
+        cents: RAIL_CENTS[segIdx] + diff, // 道の高さ+ズレぶん=ボールの高さ
+        matched: Math.abs(diff) <= LEVELS[currentLevel].fullBand // 合っていたか
+      };
+    });
 }
 
 // 道とボールを描く。progress は 0〜1(リプレイの進み具合)
@@ -1228,15 +1274,17 @@ function drawRoadOnCanvas(canvas, cssHeight, rails, durationSecArg, data, progre
 // 本番(3音)の道は、これまでどおりの見た目で描く
 function drawRoad(data, progress) {
   const rails = TARGET_NOTES.map((n, i) => ({ cents: RAIL_CENTS[i], label: n.name }));
-  drawRoadOnCanvas(roadCanvas, 220, rails, RECORD_SECONDS, data, progress);
+  // 【今回修正・修正1】道の長さも、歌い出し(scoringStartTime)からの実質の長さに合わせる
+  drawRoadOnCanvas(roadCanvas, 220, rails, RECORD_SECONDS - scoringStartTime, data, progress);
 }
 
-// リプレイ再生(約3秒かけてボールが道をなぞる)
+// リプレイ再生(歌い出しから録音終了までを、実際の長さでなぞる)
 function playRoadReplay() {
   if (roadAnimId) cancelAnimationFrame(roadAnimId);
   const data = prepareRoadData(lastSamplesForRoad);
   const startMs = performance.now();
-  const durationMs = RECORD_SECONDS * 1000;
+  // 【今回修正】ガード+反応時間ぶんを差し引いた、実際に歌っていた長さぶんだけ再生する
+  const durationMs = (RECORD_SECONDS - scoringStartTime) * 1000;
 
   function frame(nowMs) {
     const progress = Math.min((nowMs - startMs) / durationMs, 1);
@@ -1477,6 +1525,9 @@ function runLiveMimicRound(targetFreq, targetNoteName, durationSec) {
     let chimedThisRound = false; // 1ラウンドにつき、キラキラ音は最初の1回だけ
     const startCtxTime = audioContext.currentTime;
     const rails = [{ cents: 0, label: targetNoteName }];
+    // 【今回追加・修正1】表示上、ガード終了時点(0.35秒)を0として道の左端から描く。
+    // 採点(ゲージ・クリア判定)には関係なく、Canvasの見た目だけを合わせるための値
+    const displayDuration = durationSec - RECORD_START_GUARD_SEC;
     mimicGaugeFill.style.width = "0%";
 
     function loop() {
@@ -1503,24 +1554,26 @@ function runLiveMimicRound(targetFreq, targetNoteName, durationSec) {
         if (freq > 0 && clarity >= CLARITY_THRESHOLD && freq >= MIN_FREQ && freq <= MAX_FREQ) {
           recentFreqs.push(freq);
           if (recentFreqs.length > 5) recentFreqs.shift();
-          // 【修正1】直近5サンプルの中央値を使い、ボールがガタガタ震えないようになめらかにする
+          // 直近5サンプルの中央値を使い、ボールがガタガタ震えないようになめらかにする
           const smoothedFreq = median(recentFreqs);
           const cents = freqToCentsDiff(smoothedFreq, targetFreq);
           isMatched = Math.abs(cents) <= LEVELS[currentLevel].fullBand;
-          displayData.push({ time: elapsed, cents, matched: isMatched });
+          // 【今回修正・修正1】表示用の時刻はガード終了時点を0にずらす
+          displayData.push({ time: elapsed - RECORD_START_GUARD_SEC, cents, matched: isMatched });
         }
       }
 
-      // 道に乗っていた時間を積算する(フレームの間隔ぶんだけ加算)
+      // 道に乗っていた時間を積算する(フレームの間隔ぶんだけ加算。判定に使うので実時間のまま)
       const dt = elapsed - prevElapsed;
       if (isMatched) matchedSeconds += dt;
       prevElapsed = elapsed;
 
-      // 【修正1】ゲージをその場でためる
+      // ゲージをその場でためる(判定用の実時間ベースなので、これまでどおり)
       mimicGaugeFill.style.width = Math.min(100, (matchedSeconds / durationSec) * 100) + "%";
 
-      // 【修正1】声にあわせてボールをリアルタイムに動かす(道が金色に光るのも既存のしくみをそのまま使う)
-      drawRoadOnCanvas(practiceRoadCanvas, 140, rails, durationSec, displayData, Math.min(elapsed / durationSec, 1));
+      // 【今回修正・修正1】声にあわせてボールをリアルタイムに動かす。表示だけガード終了時点基準にする
+      const displayElapsed = Math.max(elapsed - RECORD_START_GUARD_SEC, 0);
+      drawRoadOnCanvas(practiceRoadCanvas, 140, rails, displayDuration, displayData, Math.min(displayElapsed / displayDuration, 1));
 
       // 道に乗った瞬間に、明るいキラキラ音を鳴らす(1ラウンドにつき1回だけ)
       if (isMatched && !chimedThisRound) {
