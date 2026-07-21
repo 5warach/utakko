@@ -30,6 +30,24 @@
     text-align: center;
   }
 
+  /* 【もどる導線追加】画面左上に固定表示する「もどる」ボタン。押しやすいよう48px角(44px以上)を確保 */
+  #globalBackBtn {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.92);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    font-size: 22px;
+    font-weight: bold;
+    color: #666;
+    z-index: 1000;
+    cursor: pointer;
+  }
+
   /* 画面(セクション)の切り替え。show クラスが付いたものだけ表示する */
   .screen { display: none; width: 100%; max-width: 480px; flex-direction: column; align-items: center; }
   .screen.show { display: flex; }
@@ -92,6 +110,23 @@
   .note-circle.c0 { background: #ff6b6b; }
   .note-circle.c1 { background: #feca57; color: #7a5a00; }
   .note-circle.c2 { background: #1dd1a1; }
+  /* 【課題選択機能追加】4音・5音の課題でも色分けできるよう追加 */
+  .note-circle.c3 { background: #54a0ff; }
+  .note-circle.c4 { background: #a29bfe; }
+  /* 【歌詞表示機能追加】歌詞つきの丸は、上段に大きく歌詞・下段に小さく音名を表示する2段組みにする */
+  .note-circle.has-lyric {
+    flex-direction: column;
+    line-height: 1.1;
+  }
+  .note-circle-lyric {
+    font-size: 28px;
+    font-weight: bold;
+  }
+  .note-circle-name {
+    font-size: 12px;
+    opacity: 0.85;
+    font-weight: normal;
+  }
   /* 再生中の音は大きくふくらませて光らせる */
   .note-circle.playing {
     transform: scale(1.25);
@@ -163,6 +198,39 @@
     margin-bottom: 4px;
   }
 
+  /* 【課題選択機能追加】課題(お題)を選ぶカード */
+  .song-cards {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    margin-bottom: 6px;
+  }
+  .song-card {
+    flex: 1;
+    background: #ffffff;
+    border: 3px solid #eee;
+    border-radius: 16px;
+    padding: 10px 4px;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+  }
+  .song-card.selected {
+    border-color: #ff9f43;
+    background: #fff3e0;
+  }
+  .song-card .song-card-name {
+    display: block;
+    font-size: 16px;
+    font-weight: bold;
+    color: #555;
+    margin-bottom: 4px;
+  }
+  .song-card .song-card-stars {
+    font-size: 13px;
+    color: #ffb300;
+  }
+
   /* 難易度えらびボタン */
   .level-row {
     display: flex;
@@ -200,7 +268,7 @@
     flex-direction: column;
     align-items: center;
   }
-  #roadCanvas, #practiceRoadCanvas, #reviewRoadCanvas {
+  #roadCanvas, #practiceRoadCanvas, #reviewRoadCanvas, #singAlongRoadCanvas {
     width: 100%;
     border-radius: 12px;
     background: linear-gradient(180deg, #eaf7ff 0%, #fdf3ff 100%);
@@ -365,8 +433,12 @@
 </head>
 <body>
 
+  <!-- 【もどる導線追加】ホーム(通常時)と結果発表の演出中以外の画面すべてで使う、共通の「もどる」ボタン。
+       画面ごとに分けず1つだけ用意し、JSで表示/非表示と戻り先の処理を切り替える -->
+  <button id="globalBackBtn" aria-label="もどる" style="display:none;">←</button>
+
   <h1>うたっこ(ミニ)</h1>
-  <p class="sub">ド・レ・ミを きいて うたってみよう</p>
+  <p class="sub" id="subText">ドレミを きいて うたってみよう</p>
 
   <!-- ========== 画面1:スタート(お手本を聞く) ========== -->
   <div class="screen show" id="screenStart">
@@ -375,11 +447,16 @@
       <span class="label">👨‍👧 おやこチャレンジ</span>
       <span id="challengeBannerText" style="display:block; font-size:22px; font-weight:bold; color:#ff7a59;">おとなの ばん!</span>
     </div>
-    <div class="notes-row">
-      <div class="note-circle c0" id="noteC0">ド</div>
-      <div class="note-circle c1" id="noteC1">レ</div>
-      <div class="note-circle c2" id="noteC2">ミ</div>
+    <!-- 【今回修正】課題カードは「おやこチャレンジ」で練習用課題を選ぶときだけ表示する。
+         ひとり練習では常に非表示(ドレミ固定・選択画面なし) -->
+    <div id="songCardsWrap" style="display:none; width:100%;">
+      <!-- おとなの番のときだけ出す、むずかしい課題への声かけ(強制はしない) -->
+      <p class="practice-hint" id="challengeSongHint" style="display:none;">おとなは むずかしい おだいに ちょうせん してみよう!</p>
+      <p class="guide-text" style="font-size:17px;">うたう おだいを えらぼう</p>
+      <div class="song-cards" id="songCardsArea"></div>
     </div>
+    <!-- 選ばれている課題の音を、丸として表示するエリア(JSで音数ぶん作る) -->
+    <div class="notes-row" id="notesRowStart"></div>
     <!-- 難易度えらび:やさしい=小さい子向け(合格の幅が広い)/ふつう -->
     <div class="level-row">
       <button class="level-btn" id="levelEasy">🐣 やさしい</button>
@@ -391,6 +468,8 @@
     <button class="big-btn" id="singBtn">🎤 うたってみる</button>
     <!-- 【工程6追加】おやこチャレンジへの入り口(チャレンジ中は隠れる) -->
     <button class="mid-btn" id="challengeStartBtn" style="background:#a29bfe;">👨‍👧 おやこチャレンジ</button>
+    <!-- 【うたのコーナー機能追加】おやこチャレンジボタンの下に配置 -->
+    <button class="mid-btn" id="songCornerEntryBtn" style="background:#feca57;">🎵 おやこで うたう(うたのコーナー)</button>
     <div class="status" id="startStatus">まずは おてほんを きいてみよう</div>
   </div>
 
@@ -403,12 +482,9 @@
   <!-- ========== 画面3:録音中 ========== -->
   <div class="screen" id="screenRecording">
     <div class="guide-text" id="recordingGuideText">うたって!</div>
-    <!-- カラオケ風ガイド:今うたう音の丸が大きく光る(判定はしない。道しるべだけ) -->
-    <div class="notes-row">
-      <div class="note-circle c0" id="recNote0">ド</div>
-      <div class="note-circle c1" id="recNote1">レ</div>
-      <div class="note-circle c2" id="recNote2">ミ</div>
-    </div>
+    <!-- カラオケ風ガイド:今うたう音の丸が大きく光る(判定はしない。道しるべだけ)。
+         【課題選択機能追加】音数は課題によって変わるため、JSで録音開始時に作りなおす -->
+    <div class="notes-row" id="notesRowRecording"></div>
     <div class="wave-area" id="waveArea"></div>
     <div class="status">こえが とどいてるよ</div>
   </div>
@@ -517,6 +593,8 @@
   <!-- ========== 画面8(工程6追加):おやこチームスコア発表 ========== -->
   <div class="screen" id="screenChallengeTeam">
     <div class="celebrate">🎉🙌🎊</div>
+    <!-- 【課題選択機能追加】前回の「もくひょう」を今回こえていたときだけ表示 -->
+    <div class="celebrate" id="teamGoalAchievedText" style="display:none; font-size:26px;">もくひょう たっせい!🎊</div>
     <div class="feedback-box" style="text-align:center;">
       <span class="label">👨‍👧 おやこチームスコア</span>
       <div class="score-big"><span id="teamScoreNum">0</span><span class="score-unit">てん</span></div>
@@ -525,6 +603,11 @@
     <div class="feedback-box" id="teamCompareBox" style="display:none; text-align:center;">
       <span class="label">📈 きろくの へんか</span>
       <span id="teamCompareText"></span>
+    </div>
+    <!-- 【課題選択機能追加】次に挑戦するときの目標(今回のチームスコア+10てん) -->
+    <div class="feedback-box" style="text-align:center;">
+      <span class="label">🎯 つぎの もくひょう</span>
+      <span id="teamNextGoalText">つぎの もくひょう:0てん!</span>
     </div>
     <button class="big-btn glow-btn" id="challengeRetryBtn">🎤 もういちど 2にんで うたう</button>
     <!-- 【ふりかえり機能追加】いちばん目立つのは上の再挑戦ボタンのまま。これは中サイズにする -->
@@ -552,6 +635,39 @@
     <!-- おとなの道を見ているときだけ表示。こどもの道を見ているときは表示しない(その先は「もどる」のみ) -->
     <button class="mid-btn" id="reviewNextBtn">つぎへ(こどもの みち)🧒</button>
     <button class="text-btn" id="reviewBackBtn">チームスコアへ もどる</button>
+  </div>
+
+  <!-- ========== 画面10(うたのコーナー機能追加):きょくを えらぶ ========== -->
+  <div class="screen" id="screenSongCorner">
+    <p class="guide-text" style="font-size:18px;">🎵 うたいたい きょくを えらぼう</p>
+    <!-- パブリックドメインの童謡3曲だけ。歌詞は表示しない(お手本はピアノ音のみ) -->
+    <div class="song-cards" id="nurseryCardsArea"></div>
+    <!-- 曲を選んだあとだけ表示する、2つの遊びかたボタン -->
+    <div id="nurseryPlayModeArea" style="display:none; width:100%;">
+      <button class="big-btn" id="singAlongEnterBtn">🎶 みんなで うたう</button>
+      <button class="big-btn glow-btn" id="nurseryChallengeBtn">🎤 こうたいで チャレンジ</button>
+    </div>
+    <button class="text-btn" id="songCornerBackBtn">ホームへ もどる</button>
+  </div>
+
+  <!-- ========== 画面11(うたのコーナー機能追加):みんなで うたう(マイク・採点なし) ========== -->
+  <div class="screen" id="screenSingAlong">
+    <span id="singAlongTitle" style="display:block; font-size:20px; font-weight:bold; color:#ff7a59;">きらきらぼし</span>
+    <!-- 【歌詞表示機能追加】歌詞を表示できない曲(きらきらぼし・かえるのうた)のときだけ出す案内 -->
+    <p class="practice-hint" id="singAlongNoLyricHint" style="display:none;">しってる かしで うたってね!(ラララでも OK)</p>
+    <div class="notes-row" id="notesRowSingAlong"></div>
+    <div class="road-wrap" id="singAlongRoadWrap">
+      <canvas id="singAlongRoadCanvas"></canvas>
+    </div>
+    <div class="status" id="singAlongStatus">おてほんに あわせて きいてみよう!</div>
+    <button class="big-btn" id="singAlongPlayBtn">▶️ さいせい する</button>
+    <button class="mid-btn" id="singAlongAgainBtn" style="display:none;">🔁 もういちど</button>
+    <!-- 1回さいせいが終わったあとだけ表示 -->
+    <div id="singAlongChallengeInvite" style="display:none; width:100%; text-align:center;">
+      <p class="practice-hint">こうたいチャレンジも やってみる?</p>
+      <button class="mid-btn glow-btn" id="singAlongToChallengeBtn">🎤 こうたいで チャレンジ</button>
+    </div>
+    <button class="text-btn" id="singAlongBackBtn">きょくえらびへ もどる</button>
   </div>
 
 <script type="module">
@@ -598,15 +714,92 @@ import("https://esm.sh/pitchy@4").then(pitchyModule => {
   console.log("Pitchy読み込み失敗。自己相関法(自前実装)を使います", e);
 });
 
-// ---------- お手本の設定 ----------
-// ド・レ・ミの周波数(Hz)。設計書の数値どおり
-const TARGET_NOTES = [
-  { name: "ド", freq: 261.63 },
-  { name: "レ", freq: 293.66 },
-  { name: "ミ", freq: 329.63 }
+// ---------- 【課題選択機能追加】課題(お題)のデータ ----------
+// id:内部で識別するための名前/name:カードに出すひらがな(カタカナ)名/stars:難易度(⭐の数)
+// notes:[{ name:音名, freq:周波数(Hz), sec:その音の長さ(秒) }, ...]
+// 【今回修正】おやこチャレンジの「練習用課題」として使う3つ(ひとり練習はこの1曲目=ドレミに固定して使う)
+const PRACTICE_SONGS = [
+  {
+    id: "doremi",
+    name: "ドレミ",
+    stars: 1,
+    notes: [
+      { name: "ド", freq: 261.63, sec: 1.0 },
+      { name: "レ", freq: 293.66, sec: 1.0 },
+      { name: "ミ", freq: 329.63, sec: 1.0 }
+    ]
+  },
+  {
+    id: "doremifaso",
+    name: "ドレミファソ",
+    stars: 2,
+    notes: [
+      { name: "ド", freq: 261.63, sec: 0.8 },
+      { name: "レ", freq: 293.66, sec: 0.8 },
+      { name: "ミ", freq: 329.63, sec: 0.8 },
+      { name: "ファ", freq: 349.23, sec: 0.8 },
+      { name: "ソ", freq: 392.00, sec: 0.8 }
+    ]
+  },
+  {
+    id: "domisodo",
+    name: "ドミソド",
+    stars: 3,
+    notes: [
+      // 音がジャンプする、むずかしい課題(最後は1オクターブ上のド)
+      { name: "ド", freq: 261.63, sec: 0.8 },
+      { name: "ミ", freq: 329.63, sec: 0.8 },
+      { name: "ソ", freq: 392.00, sec: 0.8 },
+      { name: "ド", freq: 523.25, sec: 0.8 }
+    ]
+  }
 ];
-const NOTE_DURATION = 1.0;   // お手本1音の長さ(秒)
-const RECORD_SECONDS = 3.0;  // 録音時間(秒)= 3音ぶん
+
+// 【うたのコーナー機能追加】著作権が切れているパブリックドメインの童謡だけを入れる場所。
+// 【今回修正】「きらきらぼし」「かえるのうた」は、日本語の歌詞をまだ画面に出せる状態で
+// 確認できていない(歌詞の著作権がまだ生きている)ため、いったん外した。
+// 「ちょうちょ」は、メロディー・歌詞(明治時代の文部省唱歌の詞)ともに著作権が切れているため残している。
+// 【今後の曲追加について】曲を追加するときは、メロディーと歌詞の両方の著作権が
+// 切れている(または利用許諾がある)ことを1曲ずつ必ず確認してから、この配列に追加すること。
+// 配列の仕組み自体はそのまま残してあるので、確認が取れた曲から1曲ずつ増やしていけばよい。
+const NURSERY_SONGS = [
+  {
+    id: "chocho",
+    name: "ちょうちょ",
+    // 歌詞は明治時代からある文部省唱歌の詞で、著作権はすでに切れているため表示してよい
+    notes: [
+      { name: "ソ", freq: 392.00, sec: 0.5, lyric: "ちょ" },
+      { name: "ミ", freq: 329.63, sec: 0.5, lyric: "う" },
+      { name: "ミ", freq: 329.63, sec: 0.5, lyric: "ちょ" },
+      { name: "ファ", freq: 349.23, sec: 0.5, lyric: "ちょ" },
+      { name: "レ", freq: 293.66, sec: 0.5, lyric: "う" },
+      { name: "レ", freq: 293.66, sec: 0.5, lyric: "ちょ" },
+      { name: "ド", freq: 261.63, sec: 0.5, lyric: "な" },
+      { name: "レ", freq: 293.66, sec: 0.5, lyric: "の" },
+      { name: "ミ", freq: 329.63, sec: 0.5, lyric: "は" },
+      { name: "ファ", freq: 349.23, sec: 0.5, lyric: "に" },
+      { name: "ソ", freq: 392.00, sec: 0.5, lyric: "と" },
+      { name: "ソ", freq: 392.00, sec: 0.5, lyric: "ま" },
+      { name: "ソ", freq: 392.00, sec: 0.5, lyric: "れ" }
+    ]
+  }
+];
+
+// いま選ばれている課題のid(ひとり練習は常にPRACTICE_SONGS[0]=ドレミに固定。
+// おやこチャレンジ・うたのコーナーではここが切り替わる)
+let activeSongId = PRACTICE_SONGS[0].id;
+
+// idから課題データを取り出す(練習用課題・うたのコーナーの童謡の両方から探す。
+// 見つからなければドレミを返す安全策つき)
+function getSongById(id) {
+  return PRACTICE_SONGS.find(s => s.id === id) || NURSERY_SONGS.find(s => s.id === id) || PRACTICE_SONGS[0];
+}
+
+// 課題の音の長さの合計から、録音時間を計算する(【修正1】課題の長さ+1秒)
+function recordSecondsFor(notes) {
+  const totalDuration = notes.reduce((a, n) => a + n.sec, 0);
+  return totalDuration + 1.0;
+}
 
 // ---------- 解析まわりの設定(工程2と同じ) ----------
 const MIN_FREQ = 70;    // 検出する声の下限(大人の低い声)
@@ -634,7 +827,10 @@ const screens = {
   challengeHandoff: document.getElementById("screenChallengeHandoff"),
   challengeTeam: document.getElementById("screenChallengeTeam"),
   // 【ふりかえり機能追加】
-  challengeReview: document.getElementById("screenChallengeReview")
+  challengeReview: document.getElementById("screenChallengeReview"),
+  // 【うたのコーナー機能追加】
+  songCorner: document.getElementById("screenSongCorner"),
+  singAlong: document.getElementById("screenSingAlong")
 };
 const listenBtn = document.getElementById("listenBtn");
 const singBtn = document.getElementById("singBtn");
@@ -645,11 +841,75 @@ const countdownNum = document.getElementById("countdownNum");
 // 【工程6追加】カウントダウン・録音中に「だれのばんか」を表示するためのガイド文
 const countdownGuideText = document.getElementById("countdownGuideText");
 const recordingGuideText = document.getElementById("recordingGuideText");
-const noteCircles = [
-  document.getElementById("noteC0"),
-  document.getElementById("noteC1"),
-  document.getElementById("noteC2")
-];
+// 【課題選択機能追加】音の丸(お手本プレビュー)を表示するコンテナ。中身はJSで課題ごとに作りなおす
+const notesRowStart = document.getElementById("notesRowStart");
+const notesRowRecording = document.getElementById("notesRowRecording");
+let noteCircles = []; // スタート画面の音の丸(選んだ課題の音数ぶん)
+let recNotes = [];    // 録音中のカラオケ風ガイドの丸(選んだ課題の音数ぶん)
+// 【課題選択機能追加】課題カードのコンテナと、おとな向けの声かけ文
+const songCardsWrap = document.getElementById("songCardsWrap"); // 【今回追加】カード全体の表示/非表示を切り替える箱
+const songCardsArea = document.getElementById("songCardsArea");
+const challengeSongHint = document.getElementById("challengeSongHint");
+const songCornerEntryBtn = document.getElementById("songCornerEntryBtn"); // 【うたのコーナー機能追加】
+
+// 【課題選択機能追加】指定したコンテナの中に、課題の音数ぶんの丸を作る共通処理。
+// 色は5色(c0〜c4)を順番に使う(5音の課題でも足りるようにしてある)
+// 【歌詞表示機能追加】note.lyricがある音は「上段:歌詞(大)/下段:音名(小)」の2段表示にする。
+// lyricを持たない課題(ドレミ・ドレミファソ・ドミソド、および歌詞非表示の童謡)は今までどおり音名だけ
+function renderNoteCircles(container, notes, idPrefix) {
+  container.innerHTML = "";
+  const els = [];
+  notes.forEach((note, i) => {
+    const div = document.createElement("div");
+    div.className = "note-circle c" + (i % 5);
+    div.id = idPrefix + i;
+    if (note.lyric) {
+      div.classList.add("has-lyric");
+      div.innerHTML =
+        '<span class="note-circle-lyric">' + note.lyric + '</span>' +
+        '<span class="note-circle-name">' + note.name + '</span>';
+    } else {
+      div.textContent = note.name;
+    }
+    container.appendChild(div);
+    els.push(div);
+  });
+  return els;
+}
+
+// 【今回修正】課題(お題)カードを描画する。おやこチャレンジで練習用課題(PRACTICE_SONGS)を
+// 選ぶときだけ使う(ひとり練習では呼び出さない)。タップで選ぶと最初の1音が試聴で鳴る
+function renderSongCards() {
+  songCardsArea.innerHTML = "";
+  PRACTICE_SONGS.forEach(song => {
+    const card = document.createElement("div");
+    card.className = "song-card" + (song.id === activeSongId ? " selected" : "");
+    card.innerHTML =
+      '<span class="song-card-name">' + song.name + '</span>' +
+      '<span class="song-card-stars">' + "⭐".repeat(song.stars) + '</span>';
+    card.addEventListener("click", () => {
+      activeSongId = song.id;
+      // 試聴:最初の1音を短く鳴らす(iPhoneの音声制限に対応してタップ内で再生する)
+      const ctx = ensureAudioContext();
+      playPianoNote(getPlaybackFreq(song.notes[0]), 0.4, ctx.currentTime + 0.05);
+      renderSongCards();       // 選択状態(枠の色)を描画しなおす
+      renderStartNotePreview(); // 音の丸のプレビューも選んだ課題にあわせて更新する
+    });
+    songCardsArea.appendChild(card);
+  });
+}
+
+// 【説明文の動的化】画面上部の説明文を、選ばれている課題・曲の名前にあわせて書き換える
+const subText = document.getElementById("subText");
+function updateSubText(songId) {
+  subText.textContent = getSongById(songId).name + "を きいて うたってみよう";
+}
+
+// 【課題選択機能追加】スタート画面の音の丸(お手本プレビュー)を、選ばれている課題にあわせて作りなおす
+function renderStartNotePreview() {
+  noteCircles = renderNoteCircles(notesRowStart, getSongById(activeSongId).notes, "noteC");
+  updateSubText(activeSongId); // 【説明文の動的化】
+}
 const waveArea = document.getElementById("waveArea");
 const scoreNum = document.getElementById("scoreNum");
 const celebrateEmoji = document.getElementById("celebrateEmoji");
@@ -695,6 +955,9 @@ const handoffContinueBtn = document.getElementById("handoffContinueBtn");
 const teamScoreNum = document.getElementById("teamScoreNum");
 const teamCompareBox = document.getElementById("teamCompareBox");
 const teamCompareText = document.getElementById("teamCompareText");
+// 【課題選択機能追加】次のもくひょう表示・達成演出
+const teamNextGoalText = document.getElementById("teamNextGoalText");
+const teamGoalAchievedText = document.getElementById("teamGoalAchievedText");
 const challengeRetryBtn = document.getElementById("challengeRetryBtn");
 const challengeEndBtn = document.getElementById("challengeEndBtn");
 // 【ふりかえり機能追加】
@@ -748,6 +1011,7 @@ let lastResult = null;
 let previousTotal = null;
 // 【工程5追加】いま案内している弱点の種類
 let currentWeakness = null;
+let weaknessNotes = null; // 【課題選択機能追加】いま表示している弱点判定が、どの課題の音を使ったものか
 // 【今回追加】1回前の練習の「のっていた時間」。再挑戦時の伸び("+0.5びょう!")の表示に使う
 let lastMimicRoundTime = null;
 let lastLongtoneTime = null;
@@ -760,7 +1024,15 @@ let challengeTurn = null;           // "parent"(おとな) または "child"(こ
 let parentScore = null;             // おとなの点数(このラウンドぶん)
 let childScore = null;              // こどもの点数(このラウンドぶん)
 let previousTeamTotal = null;       // 前回のチームスコア(再挑戦の差分表示に使う)
+let challengeGoal = null;           // 【課題選択機能追加】前回表示した「つぎの もくひょう」の点数
 let challengeChildOctaveUp = false; // 「こどものたかさ」ボタンのON/OFF(お手本の聞こえ方だけを変える)
+
+// 【うたのコーナー機能追加】
+let challengeFixedSongId = null;  // うたのコーナーから始めたときは、ここに曲idが入り、両方の番でその曲に固定される
+let selectedNurserySongId = null; // うたのコーナーで、いま選ばれている童謡のid
+let singAlongSongId = null;       // 「みんなで うたう」画面で、いま再生している童謡のid
+let singAlongAnimId = null;       // 「みんなで うたう」の道アニメーションID
+let notesRowSingAlongEls = [];    // 「みんなで うたう」画面の音の丸
 
 // 【ふりかえり機能追加】おとな・こどもそれぞれの録音記録(音の道リプレイ用)。
 // 端末のメモリ内だけで保持し、localStorageには保存しない。チャレンジ終了時に破棄する
@@ -814,9 +1086,76 @@ levelNormalBtn.addEventListener("click", () => {
 updateLevelButtons();
 
 // ---------- 画面切り替え ----------
+const globalBackBtn = document.getElementById("globalBackBtn");
+let currentScreenName = "start"; // 【もどる導線追加】いま表示中の画面名を覚えておく
+
 function showScreen(name) {
   Object.values(screens).forEach(s => s.classList.remove("show"));
   screens[name].classList.add("show");
+  currentScreenName = name;
+  updateGlobalBackButton(name); // 【もどる導線追加】
+}
+
+// 【もどる導線追加】「もどる」ボタンを出す画面・出さない画面を決める。
+// 出さないのは、ホーム(ふつうの状態のスタート画面)と、結果発表の演出画面(ソロ・チャレンジ個人結果)だけ
+function updateGlobalBackButton(name) {
+  const noBackScreens = ["result", "challengeTurnResult"];
+  if (noBackScreens.includes(name)) {
+    globalBackBtn.style.display = "none";
+    return;
+  }
+  if (name === "start" && !challengeActive) {
+    globalBackBtn.style.display = "none"; // ふつうのホームには「もどる」を出さない
+    return;
+  }
+  globalBackBtn.style.display = "flex";
+}
+
+globalBackBtn.addEventListener("click", () => {
+  handleGlobalBack(currentScreenName);
+});
+
+// 【もどる導線追加】いまの画面ごとに、押し間違えても進行が壊れない戻り先・後片付けを行う
+function handleGlobalBack(name) {
+  switch (name) {
+    case "start":
+      // ここに来るのは、おやこチャレンジの各ターンの選択画面にいるとき
+      // (ふつうのホームでは「もどる」自体を出していない)
+      endChallengeAndGoHome();
+      break;
+    case "countdown":
+      cancelCountdownAndGoBack();
+      break;
+    case "recording":
+      cancelRecordingAndGoBack();
+      break;
+    case "weakness":
+      // 既存の「けっかがめんへ もどる」ボタンと同じ後片付け
+      previousTotal = null;
+      stopMic();
+      practiceCancelled = true;
+      showScreen("result");
+      break;
+    case "challengeHandoff":
+    case "challengeTeam":
+      // チャレンジの途中(交代画面・チームスコア画面)からの「もどる」は、
+      // 記録を破棄してチャレンジの入口(ホーム)まで戻す
+      endChallengeAndGoHome();
+      break;
+    case "challengeReview":
+      if (reviewRoadAnimId) cancelAnimationFrame(reviewRoadAnimId);
+      showScreen("challengeTeam");
+      break;
+    case "songCorner":
+      showSoloStart();
+      break;
+    case "singAlong":
+      if (singAlongAnimId) cancelAnimationFrame(singAlongAnimId);
+      showScreen("songCorner");
+      break;
+    default:
+      showSoloStart();
+  }
 }
 
 // ---------- AudioContext(音の装置)の準備。必ずタップの中で呼ぶ(iPhone対策) ----------
@@ -875,7 +1214,7 @@ function getPlaybackFreq(note) {
   return note.freq;
 }
 
-// ---------- お手本再生(ド→レ→ミを1秒ずつ。丸も一緒に光らせる) ----------
+// ---------- お手本再生(選ばれている課題の音を順に。丸も一緒に光らせる) ----------
 let isPlayingExample = false;
 
 listenBtn.addEventListener("click", () => {
@@ -886,29 +1225,37 @@ listenBtn.addEventListener("click", () => {
   singBtn.disabled = true;
   startStatus.textContent = "おてほんを ならすよ";
 
-  // Web Audio APIの時刻指定で正確に1秒ごとに予約する
+  // 【課題選択機能追加】いま選ばれている課題の音を使う(音の数・長さは課題によって違う)
+  const notes = getSongById(activeSongId).notes;
+
+  // Web Audio APIの時刻指定で正確に予約する(累計時間で1音ずつずらす)
   // (setTimeoutより音のタイミングが正確。工程1レビューでの宿題に対応)
   const startTime = ctx.currentTime + 0.1;
-  TARGET_NOTES.forEach((note, i) => {
-    playPianoNote(getPlaybackFreq(note), NOTE_DURATION * 0.95, startTime + i * NOTE_DURATION);
+  let scheduleOffset = 0;
+  notes.forEach((note) => {
+    playPianoNote(getPlaybackFreq(note), note.sec * 0.95, startTime + scheduleOffset);
+    scheduleOffset += note.sec;
   });
 
   // 丸を光らせる演出は見た目用なのでsetTimeoutで十分
-  TARGET_NOTES.forEach((note, i) => {
+  let lightOffset = 0;
+  notes.forEach((note, i) => {
     setTimeout(() => {
       noteCircles.forEach(c => c.classList.remove("playing"));
       noteCircles[i].classList.add("playing");
-    }, 100 + i * NOTE_DURATION * 1000);
+    }, 100 + lightOffset * 1000);
+    lightOffset += note.sec;
   });
 
   // 再生終了後に元へ戻す
+  const totalSec = notes.reduce((a, n) => a + n.sec, 0);
   setTimeout(() => {
     noteCircles.forEach(c => c.classList.remove("playing"));
     isPlayingExample = false;
     listenBtn.disabled = false;
     singBtn.disabled = false;
     startStatus.textContent = "おなじように うたってみよう!";
-  }, 100 + TARGET_NOTES.length * NOTE_DURATION * 1000);
+  }, 100 + totalSec * 1000);
 });
 
 // ---------- 「うたってみる」:マイク準備 → カウントダウン → 録音 ----------
@@ -955,6 +1302,7 @@ singBtn.addEventListener("click", async () => {
 // 【工程5修正】完了時の処理を引数で渡せるようにした。
 // これにより「本番の録音」と「おすすめ練習」で、まったく同じ見た目・同じペースの
 // カウントダウンを使い回せる(以前は練習だけ独自の速いカウントで違和感があった)
+let countdownTimerId = null; // 【もどる導線追加】「もどる」で押し間違えたときに止められるよう控えておく
 function runCountdown(from, onComplete) {
   const complete = onComplete || startRecording; // 何も指定しなければ今までどおり本番の録音へ
   let count = from;
@@ -962,13 +1310,14 @@ function runCountdown(from, onComplete) {
   // カウントに合わせてポン、と軽い音を鳴らす(準備の合図)
   playPianoNote(660, 0.15);
 
-  const timer = setInterval(() => {
+  countdownTimerId = setInterval(() => {
     count--;
     if (count > 0) {
       countdownNum.textContent = count;
       playPianoNote(660, 0.15);
     } else {
-      clearInterval(timer);
+      clearInterval(countdownTimerId);
+      countdownTimerId = null;
       countdownNum.textContent = "🎵";
       playPianoNote(880, 0.3); // スタートの合図は少し高い音
       complete();
@@ -976,14 +1325,18 @@ function runCountdown(from, onComplete) {
   }, 1000);
 }
 
-// ---------- 録音開始(3秒間ピッチを記録) ----------
-const recNotes = [
-  document.getElementById("recNote0"),
-  document.getElementById("recNote1"),
-  document.getElementById("recNote2")
-];
+// ---------- 録音開始(課題の音数ぶん、ピッチを記録する) ----------
+// 【課題選択機能追加】この録音で実際に使う課題(音の並び)と、それに応じた録音時間
+let recordingNotes = null;
+let currentRecordSeconds = 0;
+let recordingAutoStopTimeoutId = null; // 【もどる導線追加】「もどる」で押し間違えたときに止められるよう控えておく
 
 function startRecording() {
+  // 【課題選択機能追加】録音を始める瞬間の選択を、この録音で使う課題として確定させる
+  // (歌っている途中でカードを選び直すことはできないので、ここで一度だけ確定する)
+  recordingNotes = getSongById(activeSongId).notes;
+  currentRecordSeconds = recordSecondsFor(recordingNotes);
+
   // 【工程6追加】チャレンジ中は録音画面の案内文にも「だれのばんか」を出す
   recordingGuideText.textContent = challengeActive
     ? (challengeTurn === "child" ? "こどもの ばん!うたって!" : "おとなの ばん!うたって!")
@@ -996,22 +1349,36 @@ function startRecording() {
   recordStartTime = audioContext.currentTime;
   recordLoop();
 
-  // カラオケ風ガイド:1秒ごとに「今うたう音」の丸を大きく光らせる
+  // カラオケ風ガイド:課題の音数ぶんの丸を作り、それぞれの音の長さに合わせて順番に光らせる
   // (音程の判定はしない。タイミングの道しるべだけ)
+  recNotes = renderNoteCircles(notesRowRecording, recordingNotes, "recNote");
   recNotes.forEach(c => c.classList.remove("playing"));
-  recNotes[0].classList.add("playing"); // 最初はドから
-  for (let i = 1; i < 3; i++) {
+  recNotes[0].classList.add("playing"); // 最初の音から
+  let offsetSec = recordingNotes[0].sec;
+  for (let i = 1; i < recordingNotes.length; i++) {
+    const noteIndex = i;
     setTimeout(() => {
       if (!isRecording) return; // すでに録音が終わっていたら何もしない
       recNotes.forEach(c => c.classList.remove("playing"));
-      recNotes[i].classList.add("playing");
-    }, i * 1000);
+      recNotes[noteIndex].classList.add("playing");
+    }, offsetSec * 1000);
+    offsetSec += recordingNotes[i].sec;
   }
 
-  // 3秒たったら自動で止める
-  setTimeout(() => {
+  // 課題の長さぶん(+1秒)たったら自動で止める
+  recordingAutoStopTimeoutId = setTimeout(() => {
     stopRecording();
-  }, RECORD_SECONDS * 1000);
+  }, currentRecordSeconds * 1000);
+}
+
+// 【もどる導線追加】カウントダウン中に「もどる」が押されたときの後片付け
+function cancelCountdownAndGoBack() {
+  if (countdownTimerId) { clearInterval(countdownTimerId); countdownTimerId = null; }
+  if (challengeActive) {
+    endChallengeAndGoHome();
+  } else {
+    showSoloStart();
+  }
 }
 
 // ---------- 録音中のループ(ピッチ記録+音量の波表示) ----------
@@ -1074,6 +1441,7 @@ function recordLoop() {
 // ---------- 録音停止 → 採点へ ----------
 function stopRecording() {
   isRecording = false;
+  if (recordingAutoStopTimeoutId) { clearTimeout(recordingAutoStopTimeoutId); recordingAutoStopTimeoutId = null; }
   if (animationId) cancelAnimationFrame(animationId);
 
   // マイクを完全に止める(使用中マークも消える)
@@ -1093,8 +1461,8 @@ function stopRecording() {
     scoringStartTime = RECORD_START_GUARD_SEC;
   }
 
-  // 採点する
-  const result = calculateScore(pitchSamples, scoringStartTime, onsetDetected);
+  // 採点する(【課題選択機能追加】この録音で使った課題の音をあわせて渡す)
+  const result = calculateScore(pitchSamples, scoringStartTime, onsetDetected, recordingNotes);
 
   // 【工程6追加】おやこチャレンジ中は、通常の結果画面(弱点判定つき)ではなく、
   // チャレンジ専用の「1人ぶんの結果→交代→チームスコア」の流れに進む
@@ -1102,6 +1470,23 @@ function stopRecording() {
     handleChallengeTurnResult(result);
   } else {
     showResult(result);
+  }
+}
+
+// 【もどる導線追加】録音中に「もどる」が押されたときの後片付け。
+// 採点はせず、マイクを止めて自動停止タイマーも取り消してから戻る
+function cancelRecordingAndGoBack() {
+  isRecording = false;
+  if (recordingAutoStopTimeoutId) { clearTimeout(recordingAutoStopTimeoutId); recordingAutoStopTimeoutId = null; }
+  if (animationId) cancelAnimationFrame(animationId);
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(t => t.stop());
+    mediaStream = null;
+  }
+  if (challengeActive) {
+    endChallengeAndGoHome();
+  } else {
+    showSoloStart();
   }
 }
 
@@ -1138,7 +1523,7 @@ function freqToCentsDiff(freq, targetFreq) {
   return cents;
 }
 
-function calculateScore(samples, segStart, onsetDetected) {
+function calculateScore(samples, segStart, onsetDetected, notes) {
   // 声がじゅうぶん録れていなかった場合は採点しない。
   // 【調整メモ】10個=雑音でも点が出てしまう/40個=小さめの歌声まで「--」になってしまう。
   // 中間の25個(3秒中およそ0.4秒ぶんの声)を基準にしていたが、
@@ -1152,14 +1537,18 @@ function calculateScore(samples, segStart, onsetDetected) {
   // いま選ばれている難易度の設定値を使う
   const lv = LEVELS[currentLevel];
 
-  // 【今回修正】録音を0秒からではなく、歌い出し(segStart)から3等分し、各区間のサンプルを分ける。
+  // 【課題選択機能追加】音数ぶんの録音時間・区間数に一般化する(3音固定の前提をなくす)
+  const numNotes = notes.length;
+  const recordSeconds = recordSecondsFor(notes);
+
+  // 【今回修正】録音を0秒からではなく、歌い出し(segStart)から音数ぶんに等分し、各区間のサンプルを分ける。
   // 合図から声を出すまでの反応時間ぶん、採点区間がズレていた問題への対応
-  const segLen = (RECORD_SECONDS - segStart) / 3;
-  const segments = [[], [], []];
+  const segLen = (recordSeconds - segStart) / numNotes;
+  const segments = notes.map(() => []);
   samples.forEach(s => {
     if (s.time < segStart) return; // 歌い出し前(反応時間ぶん)は、どの区間にも数えない
     let idx = Math.floor((s.time - segStart) / segLen);
-    if (idx > 2) idx = 2;
+    if (idx > numNotes - 1) idx = numNotes - 1;
     segments[idx].push(s.freq);
   });
 
@@ -1170,7 +1559,7 @@ function calculateScore(samples, segStart, onsetDetected) {
       return { score: lv.quietScore, centsDiff: null, avgFreq: null };
     }
     const avgFreq = segFreqs.reduce((a, b) => a + b, 0) / segFreqs.length;
-    const centsDiff = freqToCentsDiff(avgFreq, TARGET_NOTES[i].freq);
+    const centsDiff = freqToCentsDiff(avgFreq, notes[i].freq);
     const absDiff = Math.abs(centsDiff);
 
     // ズレの大きさを難易度ごとの幅で点数に変換
@@ -1181,15 +1570,15 @@ function calculateScore(samples, segStart, onsetDetected) {
     return { score, centsDiff, avgFreq };
   });
 
-  // 音程点=3区間の平均
-  const pitchScore = segmentResults.reduce((a, r) => a + r.score, 0) / 3;
+  // 音程点=音数ぶんの区間の平均
+  const pitchScore = segmentResults.reduce((a, r) => a + r.score, 0) / numNotes;
 
-  // 安定性:全サンプルのピッチのブレ幅(標準偏差)をセント単位で計算
-  const allCents = samples.map(s => 1200 * Math.log2(s.freq / TARGET_NOTES[0].freq));
+  // 安定性:全サンプルのピッチのブレ幅(標準偏差)をセント単位で計算(課題の最初の音を基準にする)
+  const allCents = samples.map(s => 1200 * Math.log2(s.freq / notes[0].freq));
   const mean = allCents.reduce((a, b) => a + b, 0) / allCents.length;
   const variance = allCents.reduce((a, c) => a + (c - mean) * (c - mean), 0) / allCents.length;
   const stdDev = Math.sqrt(variance);
-  // ド→レ→ミと音が動くぶんのブレは差し引いた基準で、難易度に応じて甘めに判定
+  // 音が動くぶんのブレは差し引いた基準で、難易度に応じて甘めに判定
   let stabilityScore;
   if (stdDev <= lv.stableFree) stabilityScore = 100;
   else if (stdDev <= 400) stabilityScore = 100 - (stdDev - lv.stableFree) * ((100 - lv.stableMin) / (400 - lv.stableFree));
@@ -1204,7 +1593,8 @@ function calculateScore(samples, segStart, onsetDetected) {
     pitchScore: Math.round(pitchScore),
     stabilityScore: Math.round(stabilityScore),
     segmentResults,
-    stdDev
+    stdDev,
+    notes // 【課題選択機能追加】この結果がどの課題(音の並び)を使ったものかを、結果自身に持たせておく
   };
 }
 
@@ -1224,9 +1614,19 @@ function directionLabel(centsDiff) {
 }
 
 // ---------- フィードバック文の生成(良い点1つ+次の挑戦1つ。否定語は使わない) ----------
+// 【課題選択機能追加】音の位置ラベルを課題の音数に応じて作る。
+// もとの3音(ドレミ)のときは今までどおり「さいしょの/まんなかの/さいごの」を使い、
+// それ以外の音数のときは「さいしょの/2ばんめの/…/さいごの」のように一般化する
+function noteOrdinalLabel(notes, i) {
+  if (i === 0) return "さいしょの " + notes[i].name;
+  if (i === notes.length - 1) return "さいごの " + notes[i].name;
+  if (notes.length === 3 && i === 1) return "まんなかの " + notes[i].name;
+  return (i + 1) + "ばんめの " + notes[i].name;
+}
+
 function makeFeedback(result) {
   const segs = result.segmentResults;
-  const noteNames = ["さいしょの ド", "まんなかの レ", "さいごの ミ"];
+  const notes = result.notes;
 
   // 「よかったところ」:一番点が高かった区間をほめる
   let bestIdx = 0;
@@ -1235,7 +1635,7 @@ function makeFeedback(result) {
   if (segs.every(s => s.score === 100)) {
     good = "ぜんぶの おとが ばっちり あってたよ!すごい!";
   } else if (segs[bestIdx].score >= 100) {
-    good = noteNames[bestIdx] + "の おとが とっても よかったよ!";
+    good = noteOrdinalLabel(notes, bestIdx) + "の おとが とっても よかったよ!";
   } else if (result.stabilityScore >= 80) {
     good = "こえが ぶれずに あんていして いたよ!";
   } else {
@@ -1249,18 +1649,18 @@ function makeFeedback(result) {
   if (segs.every(s => s.score === 100)) {
     next = "こんどは もっと ながく のばして うたってみよう!";
   } else if (segs[worstIdx].centsDiff === null) {
-    next = noteNames[worstIdx] + "でも こえを だしてみよう!";
+    next = noteOrdinalLabel(notes, worstIdx) + "でも こえを だしてみよう!";
   } else {
     // 【工程5修正】方向があいまいなときは「たかく/ひくく」を言わず、安全な言い方にする
     const dir = directionLabel(segs[worstIdx].centsDiff);
     if (dir === "unclear") {
-      next = noteNames[worstIdx] + "を おてほんと おなじ たかさで うたってみよう!";
+      next = noteOrdinalLabel(notes, worstIdx) + "を おてほんと おなじ たかさで うたってみよう!";
     } else if (dir === "low") {
-      next = noteNames[worstIdx] + "を もうすこし たかく してみよう!";
+      next = noteOrdinalLabel(notes, worstIdx) + "を もうすこし たかく してみよう!";
     } else if (dir === "high") {
-      next = noteNames[worstIdx] + "を もうすこし ひくく してみよう!";
+      next = noteOrdinalLabel(notes, worstIdx) + "を もうすこし ひくく してみよう!";
     } else {
-      next = noteNames[worstIdx] + "を もういちど たしかめてみよう!";
+      next = noteOrdinalLabel(notes, worstIdx) + "を もういちど たしかめてみよう!";
     }
   }
 
@@ -1277,54 +1677,60 @@ const replayBtn = document.getElementById("replayBtn");
 let lastSamplesForRoad = [];   // リプレイ用に直近の録音の記録をとっておく(端末内のみ)
 let roadAnimId = null;
 
-// 縦位置の計算:ドの高さ(0セント)を基準に、上下にどれだけ離れているかで決める
-// 表示範囲は -500〜+900セント(ド〜ミ+ズレぶんが収まる範囲)
-const ROAD_MIN_CENTS = -500;
-const ROAD_MAX_CENTS = 900;
+// 縦位置の計算:表示範囲は、その課題の音の高さに合わせて描画のたびに決める(下のdrawRoadOnCanvas内で計算)
 
-function centsToY(cents, height) {
-  // セントが大きい(高い音)ほど上=Y座標は小さくなる
-  const ratio = (cents - ROAD_MIN_CENTS) / (ROAD_MAX_CENTS - ROAD_MIN_CENTS);
-  return height - ratio * height;
+// 【課題選択機能追加】課題の「最初の音」を基準に、各音の実際の高さの差(セント)を計算する。
+// freqToCentsDiffとちがい、ここでは1200セント(1オクターブ)の折りたたみをしない。
+// ドミソド課題のようにオクターブをまたいで音がジャンプする課題でも、
+// 道の高さがちゃんと段々に上がっていくようにするため
+function centsFromFirstNote(freq, firstNoteFreq) {
+  return 1200 * Math.log2(freq / firstNoteFreq);
 }
 
-// お手本3音の「道の高さ」(ドを0セントとして、レ=+200、ミ=+400)
-const RAIL_CENTS = [0, 200, 400];
+// 課題の各音の「道の高さ」の配列を作る(最初の音を0セントとする)
+function getRailCentsForNotes(notes) {
+  return notes.map(n => centsFromFirstNote(n.freq, notes[0].freq));
+}
 
-// 【ふりかえり機能追加】任意の録音記録・開始時刻から道データを作る(prepareRoadDataの汎用版)。
+// 【ふりかえり機能追加】任意の録音記録・開始時刻・課題の音から道データを作る(prepareRoadDataの汎用版)。
 // おやこチャレンジの「おとなの みち」「こどもの みち」を、それぞれの録音記録から描くために使う。
-// 既存のprepareRoadData(本番の結果画面用)はそのまま残し、動作を変えない
-function prepareRoadDataFrom(samples, startTime) {
-  const segLen = (RECORD_SECONDS - startTime) / 3;
+function prepareRoadDataFrom(samples, startTime, notes) {
+  const numNotes = notes.length;
+  const recordSeconds = recordSecondsFor(notes);
+  const segLen = (recordSeconds - startTime) / numNotes;
+  const railCents = getRailCentsForNotes(notes);
   return samples
     .filter(s => s.time >= startTime)
     .map(s => {
       let segIdx = Math.floor((s.time - startTime) / segLen);
-      if (segIdx > 2) segIdx = 2;
-      const diff = freqToCentsDiff(s.freq, TARGET_NOTES[segIdx].freq);
+      if (segIdx > numNotes - 1) segIdx = numNotes - 1;
+      const diff = freqToCentsDiff(s.freq, notes[segIdx].freq);
       return {
         time: s.time - startTime,
-        cents: RAIL_CENTS[segIdx] + diff,
+        cents: railCents[segIdx] + diff,
         matched: Math.abs(diff) <= LEVELS[currentLevel].fullBand
       };
     });
 }
 
-// 録音サンプルを描画用に変換する(セント値に直し、オクターブ差は折りたたむ)
-function prepareRoadData(samples) {
-  // 【今回修正】採点(calculateScore)と同じく、歌い出し(scoringStartTime)から3等分する
-  const segLen = (RECORD_SECONDS - scoringStartTime) / 3;
+// 録音サンプルを描画用に変換する(セント値に直し、オクターブ差は折りたたむ)。【課題選択機能追加】音数に応じて一般化
+function prepareRoadData(samples, notes) {
+  // 【今回修正】採点(calculateScore)と同じく、歌い出し(scoringStartTime)から音数ぶんに等分する
+  const numNotes = notes.length;
+  const recordSeconds = recordSecondsFor(notes);
+  const segLen = (recordSeconds - scoringStartTime) / numNotes;
+  const railCents = getRailCentsForNotes(notes);
   return samples
     .filter(s => s.time >= scoringStartTime) // 歌い出し前(反応時間ぶん)は道にも描かない
     .map(s => {
       let segIdx = Math.floor((s.time - scoringStartTime) / segLen);
-      if (segIdx > 2) segIdx = 2;
+      if (segIdx > numNotes - 1) segIdx = numNotes - 1;
       // その区間のお手本の音を基準に、±600セントに折りたたんだズレを計算
-      const diff = freqToCentsDiff(s.freq, TARGET_NOTES[segIdx].freq);
+      const diff = freqToCentsDiff(s.freq, notes[segIdx].freq);
       return {
         // 【今回修正・修正1】歌い出し時点を0とすることで、道の左端から軌跡が描かれるようにする
         time: s.time - scoringStartTime,
-        cents: RAIL_CENTS[segIdx] + diff, // 道の高さ+ズレぶん=ボールの高さ
+        cents: railCents[segIdx] + diff, // 道の高さ+ズレぶん=ボールの高さ
         matched: Math.abs(diff) <= LEVELS[currentLevel].fullBand // 合っていたか
       };
     });
@@ -1364,11 +1770,22 @@ function drawRoadOnCanvas(canvas, cssHeight, rails, durationSecArg, data, progre
   const segCount = rails.length;
   const gap = segCount > 1 ? 8 : 0; // 複数区間のときだけ、区間の間にすき間を作る
 
+  // 【課題選択機能追加】表示する縦の範囲(セント)を、この課題の音域にあわせてその場で計算する。
+  // 道の一番低い音・一番高い音のまわりに、ズレぶんの余裕(±600セント)を持たせる
+  const railCentsValues = rails.map(r => r.cents);
+  const rangeMin = Math.min(...railCentsValues) - 600;
+  const rangeMax = Math.max(...railCentsValues) + 600;
+  function centsToY(cents) {
+    // セントが大きい(高い音)ほど上=Y座標は小さくなる
+    const ratio = (cents - rangeMin) / (rangeMax - rangeMin);
+    return cssHeight - ratio * cssHeight;
+  }
+
   // --- 道(レール)を描く。通過済みで合っていた部分は金色 ---
   for (let i = 0; i < segCount; i++) {
     const x0 = pad + (i / segCount) * w;
     const x1 = pad + ((i + 1) / segCount) * w - gap;
-    const y = centsToY(rails[i].cents, cssHeight);
+    const y = centsToY(rails[i].cents);
 
     // ベースの道(グレー)
     ctx2d.strokeStyle = "#d8d8e0";
@@ -1418,7 +1835,7 @@ function drawRoadOnCanvas(canvas, cssHeight, rails, durationSecArg, data, progre
     ctx2d.beginPath();
     passed.forEach((d, i) => {
       const x = pad + (d.time / durationSecArg) * w;
-      const y = centsToY(d.cents, cssHeight);
+      const y = centsToY(d.cents);
       if (i === 0) ctx2d.moveTo(x, y);
       else ctx2d.lineTo(x, y);
     });
@@ -1431,7 +1848,7 @@ function drawRoadOnCanvas(canvas, cssHeight, rails, durationSecArg, data, progre
     // 直近0.2秒以内に声があったときだけボールを表示
     if (nowTime - last.time < 0.2) {
       const x = pad + (last.time / durationSecArg) * w;
-      const y = centsToY(last.cents, cssHeight);
+      const y = centsToY(last.cents);
       ctx2d.fillStyle = last.matched ? "#ffb300" : "#ff7a59";
       ctx2d.beginPath();
       ctx2d.arc(x, y, 11, 0, Math.PI * 2);
@@ -1446,24 +1863,27 @@ function drawRoadOnCanvas(canvas, cssHeight, rails, durationSecArg, data, progre
   }
 }
 
-// 本番(3音)の道は、これまでどおりの見た目で描く
-function drawRoad(data, progress) {
-  const rails = TARGET_NOTES.map((n, i) => ({ cents: RAIL_CENTS[i], label: n.name }));
+// 本番の道は、この結果で使った課題(音の数・並び)に合わせて描く
+function drawRoad(data, progress, notes) {
+  const railCents = getRailCentsForNotes(notes);
+  const rails = notes.map((n, i) => ({ cents: railCents[i], label: n.name }));
   // 【今回修正・修正1】道の長さも、歌い出し(scoringStartTime)からの実質の長さに合わせる
-  drawRoadOnCanvas(roadCanvas, 220, rails, RECORD_SECONDS - scoringStartTime, data, progress);
+  drawRoadOnCanvas(roadCanvas, 220, rails, recordSecondsFor(notes) - scoringStartTime, data, progress);
 }
 
 // リプレイ再生(歌い出しから録音終了までを、実際の長さでなぞる)
 function playRoadReplay() {
   if (roadAnimId) cancelAnimationFrame(roadAnimId);
-  const data = prepareRoadData(lastSamplesForRoad);
+  if (!lastResult || lastResult.noVoice) return;
+  const notes = lastResult.notes; // 【課題選択機能追加】この結果で使った課題の音
+  const data = prepareRoadData(lastSamplesForRoad, notes);
   const startMs = performance.now();
   // 【今回修正】ガード+反応時間ぶんを差し引いた、実際に歌っていた長さぶんだけ再生する
-  const durationMs = (RECORD_SECONDS - scoringStartTime) * 1000;
+  const durationMs = (recordSecondsFor(notes) - scoringStartTime) * 1000;
 
   function frame(nowMs) {
     const progress = Math.min((nowMs - startMs) / durationMs, 1);
-    drawRoad(data, progress);
+    drawRoad(data, progress, notes);
     if (progress < 1) {
       roadAnimId = requestAnimationFrame(frame);
     }
@@ -1536,12 +1956,12 @@ function showResult(result) {
   // 音ごとの星表示:⭐=ばっちり(満点)、☆=おしい(あと少し)
   // ×や赤は使わない。「おしい」も星の仲間として見せる
   // やさしいモードでは満点の幅が広いので、自然と⭐が付きやすくなる
-  const noteNamesShort = ["ド", "レ", "ミ"];
+  // 【課題選択機能追加】音名は固定のド・レ・ミではなく、この結果で使った課題(result.notes)から取る
   result.segmentResults.forEach((seg, i) => {
     const item = document.createElement("div");
     item.className = "note-star-item";
     const star = seg.score >= 100 ? "⭐" : "☆";
-    item.innerHTML = '<span class="star">' + star + '</span>' + noteNamesShort[i];
+    item.innerHTML = '<span class="star">' + star + '</span>' + result.notes[i].name;
     noteStarsArea.appendChild(item);
   });
 
@@ -1579,7 +1999,8 @@ backBtn.addEventListener("click", () => {
 function startChallengeTurnScreen(turn) {
   challengeTurn = turn;
   challengeBanner.style.display = "block";
-  challengeStartBtn.style.display = "none"; // チャレンジ中はふつうの入り口ボタンを隠す
+  challengeStartBtn.style.display = "none";   // チャレンジ中はふつうの入り口ボタンを隠す
+  songCornerEntryBtn.style.display = "none";  // 【うたのコーナー機能追加】チャレンジ中は隠す
   if (turn === "child") {
     challengeBannerText.textContent = "こどもの ばん!";
     childHeightBtn.style.display = "block";
@@ -1587,6 +2008,38 @@ function startChallengeTurnScreen(turn) {
     challengeBannerText.textContent = "おとなの ばん!";
     childHeightBtn.style.display = "none";
   }
+
+  if (challengeFixedSongId) {
+    // 【うたのコーナー機能追加】うたのコーナーから始めたときは、曲を固定してカード・声かけは出さない
+    activeSongId = challengeFixedSongId;
+    songCardsWrap.style.display = "none";
+    challengeSongHint.style.display = "none";
+  } else {
+    // 通常の「おやこチャレンジ」:練習用課題(ドレミ系)のカードから選べる
+    songCardsWrap.style.display = "block";
+    renderSongCards();
+    // 【課題選択機能追加】おとなの番の前だけ、むずかしい課題への声かけを出す(強制はしない)
+    challengeSongHint.style.display = (turn === "parent") ? "block" : "none";
+  }
+
+  showScreen("start");
+  startStatus.classList.remove("error");
+  startStatus.textContent = "まずは おてほんを きいてみよう";
+  renderStartNotePreview(); // 選ばれている課題にあわせて音の丸を作りなおす
+}
+
+// 【今回追加】ひとり練習のホーム画面に戻す共通処理。
+// ひとり練習は常にドレミ(PRACTICE_SONGS[0])固定・選択画面なしにする
+function showSoloStart() {
+  challengeFixedSongId = null;
+  activeSongId = PRACTICE_SONGS[0].id;
+  songCardsWrap.style.display = "none";
+  challengeSongHint.style.display = "none";
+  challengeBanner.style.display = "none";
+  childHeightBtn.style.display = "none";
+  challengeStartBtn.style.display = "block";
+  songCornerEntryBtn.style.display = "block";
+  renderStartNotePreview();
   showScreen("start");
   startStatus.classList.remove("error");
   startStatus.textContent = "まずは おてほんを きいてみよう";
@@ -1595,8 +2048,10 @@ function startChallengeTurnScreen(turn) {
 // 「おやこチャレンジ👨‍👧」ボタン:1回目はかならず、おとなの番から始める
 challengeStartBtn.addEventListener("click", () => {
   challengeActive = true;
+  challengeFixedSongId = null; // 【うたのコーナー機能追加】通常入り口では曲を固定しない(カードから選ぶ)
   parentScore = null;
   childScore = null;
+  challengeGoal = null; // 【課題選択機能追加】新しいチャレンジなので、もくひょうもリセット
   challengeParentData = null; // 【ふりかえり機能追加】前回ぶんの記録は残さない
   challengeChildData = null;  // 【ふりかえり機能追加】
   startChallengeTurnScreen("parent");
@@ -1678,6 +2133,18 @@ function showChallengeTeamResult() {
     teamCompareBox.style.display = "none";
   }
 
+  // 【課題選択機能追加】前回表示した「もくひょう」を、今回こえていたら達成演出を出す
+  if (challengeGoal !== null && teamTotal >= challengeGoal) {
+    teamGoalAchievedText.style.display = "block";
+  } else {
+    teamGoalAchievedText.style.display = "none";
+  }
+
+  // 【課題選択機能追加】今回のチームスコアから、次にめざす「もくひょう」を計算して表示する
+  const nextGoal = teamTotal + 10;
+  teamNextGoalText.textContent = "つぎの もくひょう:" + nextGoal + "てん!";
+  challengeGoal = nextGoal; // 次回の判定に使うため控えておく
+
   showScreen("challengeTeam");
 }
 
@@ -1690,22 +2157,20 @@ challengeRetryBtn.addEventListener("click", () => {
 });
 
 // 「おやこチャレンジを おわる」:ふつうの ひとり練習画面に戻す
-challengeEndBtn.addEventListener("click", () => {
+// 【もどる導線追加】この後片付け処理は、チャレンジ途中の画面で「もどる」を押したときにも使い回す
+function endChallengeAndGoHome() {
   challengeActive = false;
   challengeTurn = null;
   previousTeamTotal = null;
   challengeChildOctaveUp = false;
+  challengeGoal = null; // 【課題選択機能追加】もくひょうもリセットする
   challengeParentData = null; // 【ふりかえり機能追加】チャレンジ終了時に破棄する
   challengeChildData = null;  // 【ふりかえり機能追加】
   if (reviewRoadAnimId) cancelAnimationFrame(reviewRoadAnimId); // 【ふりかえり機能追加】動いていれば止める
   childHeightBtn.textContent = "🧒 こどものたかさ:OFF";
-  challengeBanner.style.display = "none";
-  childHeightBtn.style.display = "none";
-  challengeStartBtn.style.display = "block";
-  showScreen("start");
-  startStatus.classList.remove("error");
-  startStatus.textContent = "まずは おてほんを きいてみよう";
-});
+  showSoloStart(); // ひとり練習(ドレミ固定・選択画面なし)のホームに戻す
+}
+challengeEndBtn.addEventListener("click", endChallengeAndGoHome);
 
 /* =========================================================
    おやこの ふりかえり(ふりかえり機能追加)
@@ -1744,9 +2209,12 @@ function playReviewRoadReplay() {
   const data = challengeReviewTurn === "parent" ? challengeParentData : challengeChildData;
   if (!data) return;
 
-  const roadData = prepareRoadDataFrom(data.samples, data.startTime);
-  const durationSec = RECORD_SECONDS - data.startTime;
-  const rails = TARGET_NOTES.map((n, i) => ({ cents: RAIL_CENTS[i], label: n.name }));
+  // 【課題選択機能追加】このターンで実際に使った課題(音の数・並び)を使う
+  const notes = data.result.notes;
+  const roadData = prepareRoadDataFrom(data.samples, data.startTime, notes);
+  const durationSec = recordSecondsFor(notes) - data.startTime;
+  const railCents = getRailCentsForNotes(notes);
+  const rails = notes.map((n, i) => ({ cents: railCents[i], label: n.name }));
   const startMs = performance.now();
   const durationMs = durationSec * 1000;
 
@@ -2172,7 +2640,7 @@ async function runLongTonePractice(targetFreq, targetNoteName) {
 
 
 // ---------- 弱点にあわせて練習画面をセットアップする ----------
-function setupPracticeScreen(w) {
+function setupPracticeScreen(w, notes) {
   practiceRetryBtn.style.display = "none";
   practiceAgainBtn.style.display = "none"; // 【今回追加】
   practiceStartBtn.style.display = "block";
@@ -2188,8 +2656,10 @@ function setupPracticeScreen(w) {
   practiceRoadWrap.style.display = "none"; // モードが決まってから表示する
   practiceCancelled = false; // 新しい練習を始めるので、キャンセル状態をリセット
 
-  let targetFreq = TARGET_NOTES[1].freq; // 基本は「レ」の高さで練習する
-  let targetNoteName = TARGET_NOTES[1].name; // 丸・道に表示する音名
+  // 【課題選択機能追加】基本は課題の2番目の音で練習する(3音より短い課題なら最初の音)
+  const defaultIdx = Math.min(1, notes.length - 1);
+  let targetFreq = notes[defaultIdx].freq;
+  let targetNoteName = notes[defaultIdx].name; // 丸・道に表示する音名
   let mode = "mimic"; // "mimic"(1音まねっこ) か "longtone"(ロングトーン)
 
   if (w.type === "low" || w.type === "high") {
@@ -2206,9 +2676,9 @@ function setupPracticeScreen(w) {
     }
   } else if (w.type === "oneNote") {
     weaknessEmoji.textContent = "🎯";
-    const nm = TARGET_NOTES[w.noteIdx].name;
+    const nm = notes[w.noteIdx].name;
     weaknessTitle.textContent = nm + "の おとだけ れんしゅうしよう!";
-    targetFreq = TARGET_NOTES[w.noteIdx].freq;
+    targetFreq = notes[w.noteIdx].freq;
     targetNoteName = nm;
   } else if (w.type === "shaky") {
     weaknessEmoji.textContent = "🎈";
@@ -2265,8 +2735,9 @@ function setupPracticeScreen(w) {
 practiceBtn.addEventListener("click", () => {
   if (!lastResult || lastResult.noVoice) return;
   currentWeakness = judgeWeakness(lastResult);
+  weaknessNotes = lastResult.notes; // 【課題選択機能追加】この結果で使った課題の音を控えておく
   previousTotal = lastResult.total; // このあと再挑戦したときに比べる基準点にする
-  setupPracticeScreen(currentWeakness);
+  setupPracticeScreen(currentWeakness, weaknessNotes);
   showScreen("weakness");
 });
 
@@ -2281,7 +2752,7 @@ practiceRetryBtn.addEventListener("click", () => {
 // previousTotal(本番再挑戦との点数比較のもと)はここではリセットしない
 practiceAgainBtn.addEventListener("click", () => {
   if (!currentWeakness) return;
-  setupPracticeScreen(currentWeakness);
+  setupPracticeScreen(currentWeakness, weaknessNotes);
 });
 
 // 結果画面へ戻る(練習を最後までやらずに戻る場合。比較の基準点もリセットする)
@@ -2291,6 +2762,168 @@ weaknessBackBtn.addEventListener("click", () => {
   practiceCancelled = true; // 【今回修正】ライブで動いている練習ループがあれば止める
   showScreen("result");
 });
+
+/* =========================================================
+   うたのコーナー(うたのコーナー機能追加)
+   ・パブリックドメインの童謡3曲(きらきらぼし・かえるのうた・ちょうちょ)だけを選べる。
+     歌詞は画面に表示しない(お手本はピアノ音のみ)。この3曲以外を足す仕組みは作らない
+   ・「🎶 みんなで うたう」:マイク・録音・採点は一切使わず、お手本+道の光る演出を流すだけ
+   ・「🎤 こうたいで チャレンジ」:選んだ曲を課題として、おやこチャレンジと同じ交互方式で遊ぶ
+   ========================================================= */
+const nurseryCardsArea = document.getElementById("nurseryCardsArea");
+const nurseryPlayModeArea = document.getElementById("nurseryPlayModeArea");
+const singAlongEnterBtn = document.getElementById("singAlongEnterBtn");
+const nurseryChallengeBtn = document.getElementById("nurseryChallengeBtn");
+const songCornerBackBtn = document.getElementById("songCornerBackBtn");
+
+const singAlongTitle = document.getElementById("singAlongTitle");
+const singAlongNoLyricHint = document.getElementById("singAlongNoLyricHint"); // 【歌詞表示機能追加】
+const notesRowSingAlong = document.getElementById("notesRowSingAlong");
+const singAlongRoadCanvas = document.getElementById("singAlongRoadCanvas");
+const singAlongStatus = document.getElementById("singAlongStatus");
+const singAlongPlayBtn = document.getElementById("singAlongPlayBtn");
+const singAlongAgainBtn = document.getElementById("singAlongAgainBtn");
+const singAlongChallengeInvite = document.getElementById("singAlongChallengeInvite");
+const singAlongToChallengeBtn = document.getElementById("singAlongToChallengeBtn");
+const singAlongBackBtn = document.getElementById("singAlongBackBtn");
+
+// ホームの「🎵 おやこで うたう(うたのコーナー)」ボタン:曲えらび画面を開く
+songCornerEntryBtn.addEventListener("click", () => {
+  selectedNurserySongId = null;
+  nurseryPlayModeArea.style.display = "none";
+  renderNurseryCards();
+  showScreen("songCorner");
+});
+
+// 童謡カードを描画する。タップで選ぶと最初の1音を試聴し、2つの遊びかたボタンを表示する
+function renderNurseryCards() {
+  nurseryCardsArea.innerHTML = "";
+  NURSERY_SONGS.forEach(song => {
+    const card = document.createElement("div");
+    card.className = "song-card" + (song.id === selectedNurserySongId ? " selected" : "");
+    card.innerHTML = '<span class="song-card-name">' + song.name + '</span>';
+    card.addEventListener("click", () => {
+      selectedNurserySongId = song.id;
+      const ctx = ensureAudioContext();
+      playPianoNote(song.notes[0].freq, 0.4, ctx.currentTime + 0.05); // 試聴
+      renderNurseryCards();
+      nurseryPlayModeArea.style.display = "block";
+      updateSubText(song.id); // 【説明文の動的化】
+    });
+    nurseryCardsArea.appendChild(card);
+  });
+}
+
+songCornerBackBtn.addEventListener("click", showSoloStart);
+
+// 「🎶 みんなで うたう」:マイクなしで、お手本+道の光る演出だけを流す画面へ
+singAlongEnterBtn.addEventListener("click", () => {
+  if (!selectedNurserySongId) return;
+  singAlongSongId = selectedNurserySongId;
+  const song = getSongById(singAlongSongId);
+  singAlongTitle.textContent = song.name;
+  updateSubText(singAlongSongId); // 【説明文の動的化】
+  notesRowSingAlongEls = renderNoteCircles(notesRowSingAlong, song.notes, "singAlongNote");
+  // 【歌詞表示機能追加】歌詞を持たない曲(きらきらぼし・かえるのうた)のときだけ、
+  // 「しってる かしで うたってね!」の案内を出す(この2曲は日本語歌詞の著作権がまだ生きているため非表示)
+  singAlongNoLyricHint.style.display = song.notes[0].lyric ? "none" : "block";
+  singAlongAgainBtn.style.display = "none";
+  singAlongChallengeInvite.style.display = "none";
+  singAlongStatus.textContent = "じゅんびが できたら さいせいしよう";
+  showScreen("singAlong");
+});
+
+// 【うたのコーナー機能追加】採点はしない「理想の軌跡」を作る。
+// マイク入力の代わりに、お手本の音そのものをボールの位置として描くための道具
+function buildIdealRoadData(notes) {
+  const railCents = getRailCentsForNotes(notes);
+  const data = [];
+  let t = 0;
+  notes.forEach((n, i) => {
+    const steps = 6; // なめらかに動くよう、1音につき数点ぶんの位置を作る
+    for (let k = 0; k < steps; k++) {
+      data.push({ time: t + (k / steps) * n.sec, cents: railCents[i], matched: true });
+    }
+    t += n.sec;
+  });
+  return data;
+}
+
+// 「▶️ さいせい する」「🔁 もういちど」:お手本を流し、音の道もいっしょに光らせる(マイクは使わない)
+function playSingAlong() {
+  const ctx = ensureAudioContext();
+  const song = getSongById(singAlongSongId);
+  const notes = song.notes;
+  singAlongStatus.textContent = "いっしょに うたってみよう!";
+
+  // お手本を鳴らす(累計時間で1音ずつ予約する)
+  const startTime = ctx.currentTime + 0.1;
+  let scheduleOffset = 0;
+  notes.forEach(n => {
+    playPianoNote(n.freq, n.sec * 0.95, startTime + scheduleOffset);
+    scheduleOffset += n.sec;
+  });
+
+  // カラオケ風ガイド:音の丸を順番に光らせる
+  let lightOffset = 0;
+  notes.forEach((n, i) => {
+    setTimeout(() => {
+      notesRowSingAlongEls.forEach(c => c.classList.remove("playing"));
+      notesRowSingAlongEls[i].classList.add("playing");
+    }, 100 + lightOffset * 1000);
+    lightOffset += n.sec;
+  });
+
+  // 音の道:採点はせず、お手本どおりに進む「理想の軌跡」を光らせるだけ
+  const idealData = buildIdealRoadData(notes);
+  const totalSec = notes.reduce((a, n) => a + n.sec, 0);
+  const railCents = getRailCentsForNotes(notes);
+  const rails = notes.map((n, i) => ({ cents: railCents[i], label: n.name }));
+
+  if (singAlongAnimId) cancelAnimationFrame(singAlongAnimId);
+  const animStartMs = performance.now() + 100;
+  function frame(nowMs) {
+    const progress = Math.min(Math.max((nowMs - animStartMs) / (totalSec * 1000), 0), 1);
+    drawRoadOnCanvas(singAlongRoadCanvas, 200, rails, totalSec, idealData, progress);
+    if (progress < 1) {
+      singAlongAnimId = requestAnimationFrame(frame);
+    } else {
+      notesRowSingAlongEls.forEach(c => c.classList.remove("playing"));
+      singAlongStatus.textContent = "じょうずに うたえたね!";
+      singAlongAgainBtn.style.display = "block";
+      singAlongChallengeInvite.style.display = "block";
+    }
+  }
+  singAlongAnimId = requestAnimationFrame(frame);
+}
+
+singAlongPlayBtn.addEventListener("click", playSingAlong);
+singAlongAgainBtn.addEventListener("click", playSingAlong);
+
+singAlongBackBtn.addEventListener("click", () => {
+  if (singAlongAnimId) cancelAnimationFrame(singAlongAnimId);
+  showScreen("songCorner");
+});
+
+// 「🎤 こうたいで チャレンジ」(曲えらび画面・みんなでうたう画面のどちらからでも):
+// 選んだ童謡を課題として固定し、おやこチャレンジと同じ交互方式を始める
+function startNurseryChallenge() {
+  if (singAlongAnimId) cancelAnimationFrame(singAlongAnimId);
+  challengeFixedSongId = selectedNurserySongId;
+  activeSongId = selectedNurserySongId;
+  challengeActive = true;
+  parentScore = null;
+  childScore = null;
+  challengeGoal = null;
+  challengeParentData = null;
+  challengeChildData = null;
+  startChallengeTurnScreen("parent");
+}
+nurseryChallengeBtn.addEventListener("click", startNurseryChallenge);
+singAlongToChallengeBtn.addEventListener("click", startNurseryChallenge);
+
+// 【うたのコーナー機能追加】ページを開いた時点で、ホームのボタン表示を初期状態にしておく
+showSoloStart();
 </script>
 
 </body>
