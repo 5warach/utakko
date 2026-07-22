@@ -113,24 +113,52 @@
   /* 【課題選択機能追加】4音・5音の課題でも色分けできるよう追加 */
   .note-circle.c3 { background: #54a0ff; }
   .note-circle.c4 { background: #a29bfe; }
-  /* 【歌詞表示機能追加】歌詞つきの丸は、上段に大きく歌詞・下段に小さく音名を表示する2段組みにする */
-  .note-circle.has-lyric {
-    flex-direction: column;
-    line-height: 1.1;
-  }
-  .note-circle-lyric {
-    font-size: 28px;
-    font-weight: bold;
-  }
-  .note-circle-name {
-    font-size: 12px;
-    opacity: 0.85;
-    font-weight: normal;
-  }
-  /* 再生中の音は大きくふくらませて光らせる */
+  /* 【歌詞ガイド機能追加】歌詞つきの曲は下の.note-chip系のスタイルを使うため、
+     丸(.note-circle)用の2段表示スタイルは不要になったため削除した */
+  /* 再生中の音は大きくふくらませて光らせる(丸のときの見た目は今までどおり変更しない) */
   .note-circle.playing {
     transform: scale(1.25);
     box-shadow: 0 0 20px rgba(255,200,80,0.8);
+  }
+  .note-chip.playing {
+    transform: scale(1.15); /* チップは横に並ぶ数が多いので、丸よりひかえめな拡大率にする */
+    box-shadow: 0 0 20px rgba(255,200,80,0.8);
+  }
+
+  /* 【歌詞ガイド機能追加】歌詞つきの曲(音数が多い)は、丸を横一列ではなく、
+     画面幅で折り返す「チップ」を並べる形にする。全音がいちどに見えるようにするため */
+  .note-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin: 16px 0 24px 0;
+  }
+  .note-chip {
+    min-width: 46px;
+    padding: 6px 6px;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.15;
+    color: #fff;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.12);
+    transition: transform 0.15s ease;
+  }
+  .note-chip.c0 { background: #ff6b6b; }
+  .note-chip.c1 { background: #feca57; color: #7a5a00; }
+  .note-chip.c2 { background: #1dd1a1; }
+  .note-chip.c3 { background: #54a0ff; }
+  .note-chip.c4 { background: #a29bfe; }
+  .note-chip-lyric {
+    font-size: 28px;
+    font-weight: bold;
+  }
+  .note-chip-name {
+    font-size: 12px;
+    opacity: 0.85;
   }
 
   /* カウントダウンの特大数字 */
@@ -852,23 +880,29 @@ const songCardsArea = document.getElementById("songCardsArea");
 const challengeSongHint = document.getElementById("challengeSongHint");
 const songCornerEntryBtn = document.getElementById("songCornerEntryBtn"); // 【うたのコーナー機能追加】
 
-// 【課題選択機能追加】指定したコンテナの中に、課題の音数ぶんの丸を作る共通処理。
+// 【課題選択機能追加】指定したコンテナの中に、課題の音数ぶんのガイドを作る共通処理。
 // 色は5色(c0〜c4)を順番に使う(5音の課題でも足りるようにしてある)
-// 【歌詞表示機能追加】note.lyricがある音は「上段:歌詞(大)/下段:音名(小)」の2段表示にする。
-// lyricを持たない課題(ドレミ・ドレミファソ・ドミソド、および歌詞非表示の童謡)は今までどおり音名だけ
+// 【歌詞ガイド機能追加】
+// ・歌詞(lyric)を持つ曲(例:ちょうちょ)は、丸を横一列に並べると音数が多い曲で画面幅からはみ出すため、
+//   画面幅で自動的に折り返す「チップ」(角丸の小さな枠。上段に歌詞・下段に音名)に変える。
+// ・歌詞を持たない課題(ドレミ・ドレミファソ・ドミソド)は音数が少ないため、今までどおり丸のまま変更しない。
 function renderNoteCircles(container, notes, idPrefix) {
   container.innerHTML = "";
+  const hasLyric = notes.some(n => n.lyric);
+  container.className = hasLyric ? "note-chips" : "notes-row"; // コンテナ自体の並べ方を切り替える
   const els = [];
   notes.forEach((note, i) => {
     const div = document.createElement("div");
-    div.className = "note-circle c" + (i % 5);
     div.id = idPrefix + i;
-    if (note.lyric) {
-      div.classList.add("has-lyric");
+    if (hasLyric) {
+      // 【歌詞ガイド機能追加】1音=1チップ。上段に歌詞を大きく、下段に音名を小さく表示する
+      div.className = "note-chip c" + (i % 5);
       div.innerHTML =
-        '<span class="note-circle-lyric">' + note.lyric + '</span>' +
-        '<span class="note-circle-name">' + note.name + '</span>';
+        '<span class="note-chip-lyric">' + note.lyric + '</span>' +
+        '<span class="note-chip-name">' + note.name + '</span>';
     } else {
+      // 今までどおりの丸表示(変更なし)
+      div.className = "note-circle c" + (i % 5);
       div.textContent = note.name;
     }
     container.appendChild(div);
@@ -1090,6 +1124,7 @@ const globalBackBtn = document.getElementById("globalBackBtn");
 let currentScreenName = "start"; // 【もどる導線追加】いま表示中の画面名を覚えておく
 
 function showScreen(name) {
+  stopAllSounds(); // 【音を止める機能追加】画面を切り替える前に、鳴っている・予約中の音をすべて止める
   Object.values(screens).forEach(s => s.classList.remove("show"));
   screens[name].classList.add("show");
   currentScreenName = name;
@@ -1112,6 +1147,7 @@ function updateGlobalBackButton(name) {
 }
 
 globalBackBtn.addEventListener("click", () => {
+  stopAllSounds(); // 【音を止める機能追加】「←」を押した瞬間にも、念のため音を止めておく
   handleGlobalBack(currentScreenName);
 });
 
@@ -1170,6 +1206,10 @@ function ensureAudioContext() {
   return audioContext;
 }
 
+// 【音を止める機能追加】いま鳴っている(鳴る予定も含む)オシレーターを控えておく配列。
+// stopAllSounds()で、まとめてstop()できるようにするため
+let activeOscillators = [];
+
 // ---------- ピアノ風の音を1つ鳴らす(工程1と同じ仕組み) ----------
 function playPianoNote(frequency, duration, when) {
   const ctx = ensureAudioContext();
@@ -1199,8 +1239,52 @@ function playPianoNote(frequency, duration, when) {
     g.connect(masterGain);
     osc.start(startTime);
     osc.stop(startTime + duration + 0.05);
+
+    // 【音を止める機能追加】あとでまとめて止められるよう控えておき、
+    // 再生が自然に終わったら配列から取り除く(配列が際限なく増えないように)
+    activeOscillators.push(osc);
+    osc.onended = () => {
+      const idx = activeOscillators.indexOf(osc);
+      if (idx !== -1) activeOscillators.splice(idx, 1);
+    };
   });
 }
+
+// 【音を止める機能追加】setTimeoutのIDを控えながら予約する共通のラッパー。
+// お手本再生の「丸を光らせる」演出など、先の時刻に予約する処理はすべてこれ経由にし、
+// stopAllSounds()でまとめて取り消せるようにする
+let scheduledTimeoutIds = [];
+function scheduleTimeout(fn, delay) {
+  const id = setTimeout(fn, delay);
+  scheduledTimeoutIds.push(id);
+  return id;
+}
+
+// 【音を止める機能追加】鳴っている・鳴る予定の音をすべて止める共通処理。
+// 「←」ボタンや画面切り替え(showScreen)の先頭で必ず呼び、
+// 画面を離れたのにお手本の音だけ鳴り続ける事故を防ぐ
+function stopAllSounds() {
+  // 予約していたsetTimeout(光る演出・再生終了後のリセットなど)をすべて取り消す
+  scheduledTimeoutIds.forEach(id => clearTimeout(id));
+  scheduledTimeoutIds = [];
+  // 鳴っている途中・鳴る予定のオシレーターがあれば止める
+  activeOscillators.forEach(osc => {
+    try {
+      osc.stop();
+    } catch (e) {
+      // すでに停止済み(または開始前で止められない)場合はそのまま無視する
+    }
+  });
+  activeOscillators = [];
+
+  // 【今回追加】お手本再生の「再生終了後に元へ戻す」処理もsetTimeoutごと止めてしまうため、
+  // 代わりにここで「再生中」の状態を確実に解除しておく(ボタンが押せないまま固まるのを防ぐ)
+  isPlayingExample = false;
+  listenBtn.disabled = false;
+  singBtn.disabled = false;
+  noteCircles.forEach(c => c.classList.remove("playing"));
+}
+
 
 // 【工程6追加】お手本を鳴らす高さを決める。
 // 「おやこチャレンジ」の「こどもの ばん」で「こどものたかさ」がONのときだけ、
@@ -1237,10 +1321,10 @@ listenBtn.addEventListener("click", () => {
     scheduleOffset += note.sec;
   });
 
-  // 丸を光らせる演出は見た目用なのでsetTimeoutで十分
+  // 丸を光らせる演出は見た目用。【音を止める機能追加】画面を離れたときに取り消せるようscheduleTimeout経由にする
   let lightOffset = 0;
   notes.forEach((note, i) => {
-    setTimeout(() => {
+    scheduleTimeout(() => {
       noteCircles.forEach(c => c.classList.remove("playing"));
       noteCircles[i].classList.add("playing");
     }, 100 + lightOffset * 1000);
@@ -1249,7 +1333,7 @@ listenBtn.addEventListener("click", () => {
 
   // 再生終了後に元へ戻す
   const totalSec = notes.reduce((a, n) => a + n.sec, 0);
-  setTimeout(() => {
+  scheduleTimeout(() => {
     noteCircles.forEach(c => c.classList.remove("playing"));
     isPlayingExample = false;
     listenBtn.disabled = false;
@@ -1357,7 +1441,7 @@ function startRecording() {
   let offsetSec = recordingNotes[0].sec;
   for (let i = 1; i < recordingNotes.length; i++) {
     const noteIndex = i;
-    setTimeout(() => {
+    scheduleTimeout(() => {
       if (!isRecording) return; // すでに録音が終わっていたら何もしない
       recNotes.forEach(c => c.classList.remove("playing"));
       recNotes[noteIndex].classList.add("playing");
@@ -1366,7 +1450,7 @@ function startRecording() {
   }
 
   // 課題の長さぶん(+1秒)たったら自動で止める
-  recordingAutoStopTimeoutId = setTimeout(() => {
+  recordingAutoStopTimeoutId = scheduleTimeout(() => {
     stopRecording();
   }, currentRecordSeconds * 1000);
 }
@@ -2864,10 +2948,10 @@ function playSingAlong() {
     scheduleOffset += n.sec;
   });
 
-  // カラオケ風ガイド:音の丸を順番に光らせる
+  // カラオケ風ガイド:音の丸を順番に光らせる。【音を止める機能追加】scheduleTimeout経由にする
   let lightOffset = 0;
   notes.forEach((n, i) => {
-    setTimeout(() => {
+    scheduleTimeout(() => {
       notesRowSingAlongEls.forEach(c => c.classList.remove("playing"));
       notesRowSingAlongEls[i].classList.add("playing");
     }, 100 + lightOffset * 1000);
