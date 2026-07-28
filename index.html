@@ -337,6 +337,22 @@
     .unlock-text { animation: none; }
   }
 
+  /* 【かけあい追加】だれが歌うところかを色で見せる。
+     .note-chip.c0 などより後ろに、同じ強さ(クラス2つ)で書くことで色を上書きする */
+  .note-chip.note-chip--parent { background: #4a9eda; color: #fff; }
+  .note-chip.note-chip--child  { background: #ff85a2; color: #fff; }
+  .note-circle.note-circle--parent { background: #4a9eda; color: #fff; }
+  .note-circle.note-circle--child  { background: #ff85a2; color: #fff; }
+  /* かけあいの「だれの番か」を示す見出し */
+  .kakeai-turn {
+    font-size: 26px;
+    font-weight: bold;
+    min-height: 34px;
+    margin-bottom: 6px;
+  }
+  .kakeai-turn.parent { color: #2b7fbb; }
+  .kakeai-turn.child  { color: #e05b7d; }
+
   /* 難易度えらびボタン */
   .level-row {
     display: flex;
@@ -577,6 +593,12 @@
       <button class="level-btn" id="levelNormal">🎵 ふつう</button>
       <button class="level-btn" id="levelHard">🔥 ちょうせん</button>
     </div>
+    <!-- 【はやさ設定追加】うたう はやさ。おてほんとガイドの速さだけが変わる -->
+    <div class="level-row">
+      <button class="level-btn tempo-btn" data-tempo="slow">🐢 ゆっくり</button>
+      <button class="level-btn tempo-btn" data-tempo="normal">🎵 ふつう</button>
+      <button class="level-btn tempo-btn" data-tempo="fast">🐇 はやい</button>
+    </div>
     <!-- 【工程6追加】こどもの番のときだけ表示。お手本を1オクターブ上げて聞ける(聞こえ方だけを変える。採点には影響しない) -->
     <button class="mid-btn" id="childHeightBtn" style="display:none; background:#1dd1a1;">🧒 こどものたかさ:OFF</button>
     <button class="mid-btn" id="listenBtn">▶️ きく</button>
@@ -597,6 +619,8 @@
   <!-- ========== 画面3:録音中 ========== -->
   <div class="screen" id="screenRecording">
     <div class="guide-text" id="recordingGuideText">うたって!</div>
+    <!-- 【かけあい追加】かけあいのときだけ、いま歌う人を大きく出す -->
+    <div class="kakeai-turn" id="kakeaiTurnLabel" style="display:none;"></div>
     <!-- カラオケ風ガイド:今うたう音の丸が大きく光る(判定はしない。道しるべだけ)。
          【課題選択機能追加】音数は課題によって変わるため、JSで録音開始時に作りなおす -->
     <div class="notes-row" id="notesRowRecording"></div>
@@ -755,6 +779,13 @@
   <!-- ========== 画面10(うたのコーナー機能追加):きょくを えらぶ ========== -->
   <div class="screen" id="screenSongCorner">
     <p class="guide-text" style="font-size:18px;">🎵 うたいたい きょくを えらぼう</p>
+    <!-- 【はやさ設定追加】うたのコーナーの3つの遊びかた全部に効く -->
+    <p class="practice-hint" style="margin-bottom:4px;">うたう はやさ</p>
+    <div class="level-row">
+      <button class="level-btn tempo-btn" data-tempo="slow">🐢 ゆっくり</button>
+      <button class="level-btn tempo-btn" data-tempo="normal">🎵 ふつう</button>
+      <button class="level-btn tempo-btn" data-tempo="fast">🐇 はやい</button>
+    </div>
     <!-- パブリックドメインの童謡だけを並べる。
          【工程7A追加】曲が増えたので、1列ではなく画面幅で折り返す(song-cards--wrap) -->
     <div class="song-cards song-cards--wrap" id="nurseryCardsArea"></div>
@@ -763,9 +794,30 @@
     <!-- 曲を選んだあとだけ表示する、2つの遊びかたボタン -->
     <div id="nurseryPlayModeArea" style="display:none; width:100%;">
       <button class="big-btn" id="singAlongEnterBtn">🎶 みんなで うたう</button>
-      <button class="big-btn glow-btn" id="nurseryChallengeBtn">🎤 こうたいで チャレンジ</button>
+      <!-- 【かけあい追加】1回の録音のなかで、フレーズごとに歌う人が入れかわるモード。
+           端末の手わたしがなく、まちじかんも数秒ずつで済む -->
+      <button class="big-btn glow-btn" id="kakeaiEnterBtn" style="background:#a29bfe;">🎭 ふたりで かけあい</button>
+      <button class="big-btn" id="nurseryChallengeBtn">🎤 ひとりずつ こうたい</button>
     </div>
     <button class="text-btn" id="songCornerBackBtn">ホームへ もどる</button>
+  </div>
+
+  <!-- ========== 画面12(かけあい追加):かけあいの じゅんび ========== -->
+  <!-- 1回の録音のなかで、フレーズごとに歌う人が入れかわる。端末は置いたままでよい。
+       点数は「ふたりで1つ」しか出ないので、勝ち負けの比較が構造的に生まれない -->
+  <div class="screen" id="screenKakeaiSetup">
+    <span id="kakeaiTitle" style="display:block; font-size:20px; font-weight:bold; color:#ff7a59;">きょくめい</span>
+    <p class="guide-text" style="font-size:18px;">どっちが さきに うたう?</p>
+    <div class="level-row">
+      <button class="level-btn" id="kakeaiFirstParent">🧑 おとなから</button>
+      <button class="level-btn" id="kakeaiFirstChild">🧒 こどもから</button>
+    </div>
+    <p class="practice-hint">🧑 あお と 🧒 ピンクを、じゅんばんに うたおう!</p>
+    <div class="note-chips" id="notesRowKakeai"></div>
+    <button class="mid-btn" id="kakeaiListenBtn">▶️ きく</button>
+    <button class="big-btn glow-btn" id="kakeaiSingBtn">🎤 ふたりで うたう</button>
+    <div class="status" id="kakeaiStatus">じゅんばんを えらんでね</div>
+    <button class="text-btn" id="kakeaiBackBtn">きょくえらびへ もどる</button>
   </div>
 
   <!-- ========== 画面11(うたのコーナー機能追加):みんなで うたう(マイク・採点なし) ========== -->
@@ -883,6 +935,10 @@ const PRACTICE_SONGS = [
 const NURSERY_SONGS = [
   {
     id: "chocho",
+    // 【かけあい追加】フレーズの区切り(1フレーズあたりの音数)。
+    // かけあいモードで「どこまでを1人が歌うか」を決めるのに使う。
+    // ちょうちょ/ちょうちょ/なのはに/とまれ
+    phrases: [3, 3, 4, 3],
     name: "ちょうちょ",
     stars: 1, // 【工程7A追加】カードに⭐を出すため(いちばんやさしい曲)
     // 歌詞は明治時代からある文部省唱歌の詞で、著作権はすでに切れているため表示してよい
@@ -914,6 +970,10 @@ const NURSERY_SONGS = [
   // ピアノ音は自然に減衰するので、耳には「音+すこしの間」として聞こえる。
   {
     id: "momotaro",
+    // 【かけあい追加】フレーズの区切り(1フレーズあたりの音数)。
+    // かけあいモードで「どこまでを1人が歌うか」を決めるのに使う。
+    // ももたろさん/ももたろさん/おこしにつけた/きびだんご/ひとつ/わたしに/くださいな
+    phrases: [5, 5, 7, 5, 3, 4, 5],
     name: "ももたろう",
     stars: 1,
     secret: true,
@@ -922,31 +982,31 @@ const NURSERY_SONGS = [
       { name: "ラ", freq: 440.0, sec: 0.4, lyric: "も" },
       { name: "ソ", freq: 392.0, sec: 0.4, lyric: "た" },
       { name: "ソ", freq: 392.0, sec: 0.4, lyric: "ろ" },
-      { name: "ミ", freq: 329.63, sec: 1.2, lyric: "さん" },
+      { name: "ミ", freq: 329.63, sec: 1, lyric: "さん" },
       { name: "ソ", freq: 392.0, sec: 0.4, lyric: "も" },
       { name: "ソ", freq: 392.0, sec: 0.4, lyric: "も" },
       { name: "ミ", freq: 329.63, sec: 0.4, lyric: "た" },
       { name: "ド", freq: 261.63, sec: 0.4, lyric: "ろ" },
-      { name: "レ", freq: 293.66, sec: 1.2, lyric: "さん" },
+      { name: "レ", freq: 293.66, sec: 1, lyric: "さん" },
       { name: "ド", freq: 261.63, sec: 0.4, lyric: "お" },
       { name: "ド", freq: 261.63, sec: 0.4, lyric: "こ" },
       { name: "レ", freq: 293.66, sec: 0.4, lyric: "し" },
       { name: "レ", freq: 293.66, sec: 0.4, lyric: "に" },
       { name: "ミ", freq: 329.63, sec: 0.4, lyric: "つ" },
       { name: "ミ", freq: 329.63, sec: 0.4, lyric: "け" },
-      { name: "レ", freq: 293.66, sec: 1.2, lyric: "た" },
+      { name: "レ", freq: 293.66, sec: 1, lyric: "た" },
       { name: "ミ", freq: 329.63, sec: 0.4, lyric: "き" },
       { name: "ミ", freq: 329.63, sec: 0.4, lyric: "び" },
       { name: "ラ", freq: 440.0, sec: 0.4, lyric: "だ" },
       { name: "ラ", freq: 440.0, sec: 0.4, lyric: "ん" },
-      { name: "ソ", freq: 392.0, sec: 1.2, lyric: "ご" },
+      { name: "ソ", freq: 392.0, sec: 1, lyric: "ご" },
       { name: "ド", freq: 261.63, sec: 0.4, lyric: "ひ" },
       { name: "ド", freq: 261.63, sec: 0.4, lyric: "と" },
-      { name: "ソ", freq: 392.0, sec: 1.2, lyric: "つ" },
+      { name: "ソ", freq: 392.0, sec: 1, lyric: "つ" },
       { name: "ミ", freq: 329.63, sec: 0.4, lyric: "わ" },
       { name: "ミ", freq: 329.63, sec: 0.4, lyric: "た" },
       { name: "ラ", freq: 440.0, sec: 0.4, lyric: "し" },
-      { name: "ラ", freq: 440.0, sec: 0.8, lyric: "に" },
+      { name: "ラ", freq: 440.0, sec: 0.6, lyric: "に" },
       { name: "ソ", freq: 392.0, sec: 0.4, lyric: "く" },
       { name: "ソ", freq: 392.0, sec: 0.4, lyric: "だ" },
       { name: "ミ", freq: 329.63, sec: 0.4, lyric: "さ" },
@@ -956,6 +1016,10 @@ const NURSERY_SONGS = [
   },
   {
     id: "donguri",
+    // 【かけあい追加】フレーズの区切り(1フレーズあたりの音数)。
+    // かけあいモードで「どこまでを1人が歌うか」を決めるのに使う。
+    // どんぐりころころ/どんぶりこ/おいけにはまって/さあたいへん/どじょうがでてきて/こんにちは/ぼっちゃんいっしょに/あそびましょ
+    phrases: [7, 4, 8, 4, 8, 4, 5, 5],
     name: "どんぐりころころ",
     stars: 2,
     secret: true,
@@ -966,11 +1030,11 @@ const NURSERY_SONGS = [
       { name: "ファ", freq: 349.23, sec: 0.35, lyric: "こ" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "ろ" },
       { name: "レ", freq: 293.66, sec: 0.35, lyric: "こ" },
-      { name: "ド", freq: 261.63, sec: 0.7, lyric: "ろ" },
+      { name: "ド", freq: 261.63, sec: 0.525, lyric: "ろ" },
       { name: "ソ", freq: 392.0, sec: 0.7, lyric: "どん" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "ぶ" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "り" },
-      { name: "レ", freq: 293.66, sec: 1.05, lyric: "こ" },
+      { name: "レ", freq: 293.66, sec: 0.875, lyric: "こ" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "お" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "い" },
       { name: "ソ", freq: 392.0, sec: 0.35, lyric: "け" },
@@ -978,11 +1042,11 @@ const NURSERY_SONGS = [
       { name: "ラ", freq: 440.0, sec: 0.35, lyric: "は" },
       { name: "ラ", freq: 440.0, sec: 0.35, lyric: "ま" },
       { name: "ラ", freq: 440.0, sec: 0.35, lyric: "っ" },
-      { name: "ラ", freq: 440.0, sec: 0.7, lyric: "て" },
+      { name: "ラ", freq: 440.0, sec: 0.525, lyric: "て" },
       { name: "ド", freq: 523.25, sec: 0.7, lyric: "さあ" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "た" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "い" },
-      { name: "ソ", freq: 392.0, sec: 1.05, lyric: "へん" },
+      { name: "ソ", freq: 392.0, sec: 0.875, lyric: "へん" },
       { name: "ソ", freq: 392.0, sec: 0.35, lyric: "ど" },
       { name: "ソ", freq: 392.0, sec: 0.35, lyric: "じょ" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "う" },
@@ -990,16 +1054,16 @@ const NURSERY_SONGS = [
       { name: "ファ", freq: 349.23, sec: 0.35, lyric: "で" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "て" },
       { name: "レ", freq: 293.66, sec: 0.35, lyric: "き" },
-      { name: "ド", freq: 261.63, sec: 0.7, lyric: "て" },
+      { name: "ド", freq: 261.63, sec: 0.525, lyric: "て" },
       { name: "ソ", freq: 392.0, sec: 0.7, lyric: "こん" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "に" },
       { name: "ミ", freq: 329.63, sec: 0.35, lyric: "ち" },
-      { name: "レ", freq: 293.66, sec: 1.05, lyric: "は" },
+      { name: "レ", freq: 293.66, sec: 0.875, lyric: "は" },
       { name: "ソ", freq: 392.0, sec: 0.7, lyric: "ぼっ" },
       { name: "ミ", freq: 329.63, sec: 0.7, lyric: "ちゃん" },
       { name: "ラ", freq: 440.0, sec: 0.7, lyric: "いっ" },
       { name: "ソ", freq: 392.0, sec: 0.35, lyric: "しょ" },
-      { name: "ソ", freq: 392.0, sec: 0.7, lyric: "に" },
+      { name: "ソ", freq: 392.0, sec: 0.525, lyric: "に" },
       { name: "ラ", freq: 440.0, sec: 0.35, lyric: "あ" },
       { name: "ラ", freq: 440.0, sec: 0.35, lyric: "そ" },
       { name: "シ", freq: 493.88, sec: 0.35, lyric: "び" },
@@ -1009,6 +1073,10 @@ const NURSERY_SONGS = [
   },
   {
     id: "usagitokame",
+    // 【かけあい追加】フレーズの区切り(1フレーズあたりの音数)。
+    // かけあいモードで「どこまでを1人が歌うか」を決めるのに使う。
+    // もしもしかめよ/かめさんよ/せかいのうちで/おまえほど/あゆみののろい/ものはない/どうしてそんなに/のろいのか
+    phrases: [7, 5, 7, 5, 7, 5, 8, 5],
     name: "うさぎとかめ",
     stars: 3,
     secret: true,
@@ -1019,36 +1087,36 @@ const NURSERY_SONGS = [
       { name: "ミ", freq: 329.63, sec: 0.22, lyric: "し" },
       { name: "ミ", freq: 329.63, sec: 0.44, lyric: "か" },
       { name: "ミ", freq: 329.63, sec: 0.22, lyric: "め" },
-      { name: "レ", freq: 293.66, sec: 0.66, lyric: "よ" },
+      { name: "レ", freq: 293.66, sec: 0.55, lyric: "よ" },
       { name: "レ", freq: 293.66, sec: 0.44, lyric: "か" },
       { name: "レ", freq: 293.66, sec: 0.22, lyric: "め" },
       { name: "ド", freq: 261.63, sec: 0.44, lyric: "さ" },
       { name: "レ", freq: 293.66, sec: 0.22, lyric: "ん" },
-      { name: "ミ", freq: 329.63, sec: 0.66, lyric: "よ" },
+      { name: "ミ", freq: 329.63, sec: 0.55, lyric: "よ" },
       { name: "ソ", freq: 392.0, sec: 0.44, lyric: "せ" },
       { name: "ソ", freq: 392.0, sec: 0.22, lyric: "か" },
       { name: "ミ", freq: 329.63, sec: 0.44, lyric: "い" },
       { name: "ソ", freq: 392.0, sec: 0.22, lyric: "の" },
       { name: "ミ", freq: 329.63, sec: 0.44, lyric: "う" },
       { name: "ミ", freq: 329.63, sec: 0.22, lyric: "ち" },
-      { name: "ド", freq: 261.63, sec: 0.44, lyric: "で" },
+      { name: "ド", freq: 261.63, sec: 0.33, lyric: "で" },
       { name: "レ", freq: 293.66, sec: 0.44, lyric: "お" },
       { name: "レ", freq: 293.66, sec: 0.22, lyric: "ま" },
       { name: "ミ", freq: 329.63, sec: 0.44, lyric: "え" },
       { name: "レ", freq: 293.66, sec: 0.22, lyric: "ほ" },
-      { name: "ド", freq: 261.63, sec: 0.66, lyric: "ど" },
+      { name: "ド", freq: 261.63, sec: 0.55, lyric: "ど" },
       { name: "ソ", freq: 392.0, sec: 0.44, lyric: "あ" },
       { name: "ソ", freq: 392.0, sec: 0.22, lyric: "ゆ" },
       { name: "ソ", freq: 392.0, sec: 0.44, lyric: "み" },
       { name: "ソ", freq: 392.0, sec: 0.22, lyric: "の" },
       { name: "ラ", freq: 440.0, sec: 0.44, lyric: "の" },
       { name: "ラ", freq: 440.0, sec: 0.22, lyric: "ろ" },
-      { name: "ラ", freq: 440.0, sec: 0.66, lyric: "い" },
+      { name: "ラ", freq: 440.0, sec: 0.55, lyric: "い" },
       { name: "ド", freq: 523.25, sec: 0.44, lyric: "も" },
       { name: "ド", freq: 523.25, sec: 0.22, lyric: "の" },
       { name: "ド", freq: 523.25, sec: 0.44, lyric: "は" },
       { name: "ラ", freq: 440.0, sec: 0.22, lyric: "な" },
-      { name: "ソ", freq: 392.0, sec: 0.66, lyric: "い" },
+      { name: "ソ", freq: 392.0, sec: 0.55, lyric: "い" },
       { name: "ラ", freq: 440.0, sec: 0.44, lyric: "ど" },
       { name: "ラ", freq: 440.0, sec: 0.22, lyric: "う" },
       { name: "ド", freq: 523.25, sec: 0.44, lyric: "し" },
@@ -1056,7 +1124,7 @@ const NURSERY_SONGS = [
       { name: "ソ", freq: 392.0, sec: 0.44, lyric: "そ" },
       { name: "ソ", freq: 392.0, sec: 0.22, lyric: "ん" },
       { name: "ミ", freq: 329.63, sec: 0.44, lyric: "な" },
-      { name: "ミ", freq: 329.63, sec: 0.44, lyric: "に" },
+      { name: "ミ", freq: 329.63, sec: 0.33, lyric: "に" },
       { name: "レ", freq: 293.66, sec: 0.44, lyric: "の" },
       { name: "レ", freq: 293.66, sec: 0.22, lyric: "ろ" },
       { name: "ミ", freq: 329.63, sec: 0.44, lyric: "い" },
@@ -1076,9 +1144,33 @@ function getSongById(id) {
   return PRACTICE_SONGS.find(s => s.id === id) || NURSERY_SONGS.find(s => s.id === id) || PRACTICE_SONGS[0];
 }
 
+/* ---------- 【はやさ設定追加】うたう はやさ(テンポ) ----------
+   曲データの sec(音の長さ)はそのままにして、再生・ガイド・録音時間だけを
+   この倍率でのばしちぢみさせる。数字が小さいほど「はやい」。
+   ※ 採点の区間の分けかたは「音の長さの比率」で計算しているので、
+     全部の音に同じ倍率をかけるこの方式では、区切りの割合は変わらない。
+     つまり、はやさを変えても採点のしくみ自体は影響を受けない */
+const TEMPOS = {
+  slow:   1.15, // 🐢 ゆっくり
+  normal: 1.00, // 🎵 ふつう
+  fast:   0.85  // 🐇 はやい
+};
+let currentTempo = "normal";
+try {
+  const saved = localStorage.getItem("utakko_tempo");
+  if (saved && TEMPOS[saved]) currentTempo = saved;
+} catch (e) {
+  // 保存が読めなくても「ふつう」で動かす
+}
+
+// 1つの音の「実際に鳴らす長さ(秒)」。はやさ設定を反映した値を返す
+function noteSec(n) {
+  return n.sec * TEMPOS[currentTempo];
+}
+
 // 課題の音の長さの合計から、録音時間を計算する(【修正1】課題の長さ+1秒)
 function recordSecondsFor(notes) {
-  const totalDuration = notes.reduce((a, n) => a + n.sec, 0);
+  const totalDuration = notes.reduce((a, n) => a + noteSec(n), 0);
   return totalDuration + 1.0;
 }
 
@@ -1111,7 +1203,9 @@ const screens = {
   challengeReview: document.getElementById("screenChallengeReview"),
   // 【うたのコーナー機能追加】
   songCorner: document.getElementById("screenSongCorner"),
-  singAlong: document.getElementById("screenSingAlong")
+  singAlong: document.getElementById("screenSingAlong"),
+  // 【かけあい追加】
+  kakeaiSetup: document.getElementById("screenKakeaiSetup")
 };
 const listenBtn = document.getElementById("listenBtn");
 const singBtn = document.getElementById("singBtn");
@@ -1139,7 +1233,9 @@ const songCornerEntryBtn = document.getElementById("songCornerEntryBtn"); // 【
 // ・歌詞(lyric)を持つ曲(例:ちょうちょ)は、丸を横一列に並べると音数が多い曲で画面幅からはみ出すため、
 //   画面幅で自動的に折り返す「チップ」(角丸の小さな枠。上段に歌詞・下段に音名)に変える。
 // ・歌詞を持たない課題(ドレミ・ドレミファソ・ドミソド)は音数が少ないため、今までどおり丸のまま変更しない。
-function renderNoteCircles(container, notes, idPrefix) {
+// 【かけあい追加】owners(音ごとの担当)を渡すと、色を5色の順番ではなく
+// 「🧑おとな=あお / 🧒こども=ピンク」の2色に切り替える
+function renderNoteCircles(container, notes, idPrefix, owners) {
   container.innerHTML = "";
   const hasLyric = notes.some(n => n.lyric);
   container.className = hasLyric ? "note-chips" : "notes-row"; // コンテナ自体の並べ方を切り替える
@@ -1149,13 +1245,17 @@ function renderNoteCircles(container, notes, idPrefix) {
     div.id = idPrefix + i;
     if (hasLyric) {
       // 【歌詞ガイド機能追加】1音=1チップ。上段に歌詞を大きく、下段に音名を小さく表示する
-      div.className = "note-chip c" + (i % 5);
+      div.className = owners
+        ? ("note-chip note-chip--" + owners[i])
+        : ("note-chip c" + (i % 5));
       div.innerHTML =
         '<span class="note-chip-lyric">' + note.lyric + '</span>' +
         '<span class="note-chip-name">' + note.name + '</span>';
     } else {
-      // 今までどおりの丸表示(変更なし)
-      div.className = "note-circle c" + (i % 5);
+      // 今までどおりの丸表示(かけあいのときだけ担当の色にする)
+      div.className = owners
+        ? ("note-circle note-circle--" + owners[i])
+        : ("note-circle c" + (i % 5));
       div.textContent = note.name;
     }
     container.appendChild(div);
@@ -1314,6 +1414,14 @@ let previousTeamTotal = null;       // 前回のチームスコア(再挑戦の�
 let challengeGoal = null;           // 【課題選択機能追加】前回表示した「つぎの もくひょう」の点数
 let challengeChildOctaveUp = false; // 「こどものたかさ」ボタンのON/OFF(お手本の聞こえ方だけを変える)
 
+// 【かけあい追加】1回の録音のなかで、フレーズごとに歌う人が入れかわるモードの状態。
+// 点数は「ふたりで1つ」だけ出す(個人の点数は作らない=勝ち負けが生まれない)
+let kakeaiActive = false;      // かけあいモードで歌っているか
+let kakeaiFirst = "parent";    // さいしょに歌う人("parent" または "child")
+let kakeaiOwners = null;       // 音ごとの担当の配列(["parent","parent","child",...])
+let kakeaiSongId = null;       // かけあいで選んでいる曲のid
+let kakeaiPreviewIds = [];     // 「きく」で光らせている予約の管理用
+
 // 【うたのコーナー機能追加】
 let challengeFixedSongId = null;  // うたのコーナーから始めたときは、ここに曲idが入り、両方の番でその曲に固定される
 let selectedNurserySongId = null; // うたのコーナーで、いま選ばれている童謡のid
@@ -1394,6 +1502,29 @@ function selectLevel(levelKey) {
   updateLevelButtons();
   updateSecretHint(); // 難易度を変えると解放に必要な点数も変わるので、案内文を出しなおす
 }
+/* 【はやさ設定追加】はやさボタン。
+   同じボタンを2か所(スタート画面・うたのコーナー)に置いているので、
+   data-tempo属性でまとめて拾って、どちらを押しても同じ動きにする */
+function updateTempoButtons() {
+  document.querySelectorAll(".tempo-btn").forEach(btn => {
+    btn.classList.toggle("selected", btn.dataset.tempo === currentTempo);
+  });
+}
+document.querySelectorAll(".tempo-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    currentTempo = btn.dataset.tempo;
+    try {
+      localStorage.setItem("utakko_tempo", currentTempo);
+    } catch (e) {
+      // 保存できなくても、その回のあいだは選んだはやさで遊べる
+    }
+    updateTempoButtons();
+    // かけあいの じゅんび画面を開いているときは、表示も作りなおす
+    if (currentScreenName === "kakeaiSetup" && kakeaiSongId) renderKakeaiSetup();
+  });
+});
+updateTempoButtons();
+
 levelEasyBtn.addEventListener("click", () => selectLevel("easy"));
 levelNormalBtn.addEventListener("click", () => selectLevel("normal"));
 levelHardBtn.addEventListener("click", () => selectLevel("hard"));
@@ -1570,6 +1701,10 @@ function handleGlobalBack(name) {
       if (singAlongAnimId) cancelAnimationFrame(singAlongAnimId);
       showScreen("songCorner");
       break;
+    case "kakeaiSetup": // 【かけあい追加】
+      kakeaiActive = false;
+      showScreen("songCorner");
+      break;
     default:
       showSoloStart();
   }
@@ -1698,8 +1833,8 @@ listenBtn.addEventListener("click", () => {
   const startTime = ctx.currentTime + 0.1;
   let scheduleOffset = 0;
   notes.forEach((note) => {
-    playPianoNote(getPlaybackFreq(note), note.sec * 0.95, startTime + scheduleOffset);
-    scheduleOffset += note.sec;
+    playPianoNote(getPlaybackFreq(note), noteSec(note) * 0.95, startTime + scheduleOffset);
+    scheduleOffset += noteSec(note);
   });
 
   // 丸を光らせる演出は見た目用。【音を止める機能追加】画面を離れたときに取り消せるようscheduleTimeout経由にする
@@ -1709,11 +1844,11 @@ listenBtn.addEventListener("click", () => {
       noteCircles.forEach(c => c.classList.remove("playing"));
       noteCircles[i].classList.add("playing");
     }, 100 + lightOffset * 1000);
-    lightOffset += note.sec;
+    lightOffset += noteSec(note);
   });
 
   // 再生終了後に元へ戻す
-  const totalSec = notes.reduce((a, n) => a + n.sec, 0);
+  const totalSec = notes.reduce((a, n) => a + noteSec(n), 0);
   scheduleTimeout(() => {
     noteCircles.forEach(c => c.classList.remove("playing"));
     isPlayingExample = false;
@@ -1724,7 +1859,9 @@ listenBtn.addEventListener("click", () => {
 });
 
 // ---------- 「うたってみる」:マイク準備 → カウントダウン → 録音 ----------
-singBtn.addEventListener("click", async () => {
+// 【かけあい追加】「うたう」の共通処理。
+// ふつうの録音ボタンと、かけあいの「ふたりで うたう」ボタンの両方から呼ぶ
+async function beginSingingFlow() {
   try {
     ensureAudioContext();
     startStatus.classList.remove("error");
@@ -1745,23 +1882,36 @@ singBtn.addEventListener("click", async () => {
     }
 
     // 【工程6追加】おやこチャレンジ中は、カウントダウンの案内文にも「だれのばんか」を出す
-    countdownGuideText.textContent = challengeActive
-      ? (challengeTurn === "child" ? "こどもの ばん!じゅんびして…" : "おとなの ばん!じゅんびして…")
-      : "じゅんびして…";
+    // 【かけあい追加】かけあいのときは、さいしょに歌う人を知らせる
+    if (kakeaiActive) {
+      countdownGuideText.textContent =
+        (kakeaiFirst === "child" ? "こどもから!" : "おとなから!") + " じゅんびして…";
+    } else {
+      countdownGuideText.textContent = challengeActive
+        ? (challengeTurn === "child" ? "こどもの ばん!じゅんびして…" : "おとなの ばん!じゅんびして…")
+        : "じゅんびして…";
+    }
 
     // カウントダウン開始
     showScreen("countdown");
     runCountdown(3);
   } catch (err) {
     console.log("マイクエラー:", err);
-    startStatus.classList.add("error");
-    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-      startStatus.textContent = "マイクが つかえなかったよ。ブラウザの せっていで マイクを「きょか」に してね";
+    const msg = (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")
+      ? "マイクが つかえなかったよ。ブラウザの せっていで マイクを「きょか」に してね"
+      : "マイクの じゅんびで こまったことが おきたよ。ページを ひらきなおして ためしてね";
+    // 【かけあい追加】かけあい中は「うたう」画面ではないので、そちらの欄に出す
+    if (kakeaiActive) {
+      kakeaiStatus.classList.add("error");
+      kakeaiStatus.textContent = msg;
+      showScreen("kakeaiSetup");
     } else {
-      startStatus.textContent = "マイクの じゅんびで こまったことが おきたよ。ページを ひらきなおして ためしてね";
+      startStatus.classList.add("error");
+      startStatus.textContent = msg;
     }
   }
-});
+}
+singBtn.addEventListener("click", beginSingingFlow);
 
 // ---------- カウントダウン(3→2→1→スタート) ----------
 // 【工程5修正】完了時の処理を引数で渡せるようにした。
@@ -1803,9 +1953,16 @@ function startRecording() {
   currentRecordSeconds = recordSecondsFor(recordingNotes);
 
   // 【工程6追加】チャレンジ中は録音画面の案内文にも「だれのばんか」を出す
-  recordingGuideText.textContent = challengeActive
-    ? (challengeTurn === "child" ? "こどもの ばん!うたって!" : "おとなの ばん!うたって!")
-    : "うたって!";
+  // 【かけあい追加】かけあいのときは、下の大きな見出しで「いま歌う人」を出すので案内文は短くする
+  if (kakeaiActive) {
+    recordingGuideText.textContent = "かけあい!";
+    kakeaiTurnLabel.style.display = "block";
+  } else {
+    recordingGuideText.textContent = challengeActive
+      ? (challengeTurn === "child" ? "こどもの ばん!うたって!" : "おとなの ばん!うたって!")
+      : "うたって!";
+    kakeaiTurnLabel.style.display = "none";
+  }
   showScreen("recording");
   pitchSamples = [];
   voiceOnsetTime = null;      // 【今回追加】新しい録音のたびに歌い出し検出をリセット
@@ -1816,18 +1973,27 @@ function startRecording() {
 
   // カラオケ風ガイド:課題の音数ぶんの丸を作り、それぞれの音の長さに合わせて順番に光らせる
   // (音程の判定はしない。タイミングの道しるべだけ)
-  recNotes = renderNoteCircles(notesRowRecording, recordingNotes, "recNote");
+  // 【かけあい追加】かけあいのときは、丸の色を「🧑あお/🧒ピンク」の担当色にする
+  // 【安全策】担当の配列と音数がずれている場合は色分けを使わない(表示が壊れないように)
+  const owners = (kakeaiActive && kakeaiOwners && kakeaiOwners.length === recordingNotes.length)
+    ? kakeaiOwners : null;
+  recNotes = renderNoteCircles(notesRowRecording, recordingNotes, "recNote", owners);
   recNotes.forEach(c => c.classList.remove("playing"));
   recNotes[0].classList.add("playing"); // 最初の音から
-  let offsetSec = recordingNotes[0].sec;
+  if (owners) setKakeaiTurnLabel(owners[0]);
+  let offsetSec = noteSec(recordingNotes[0]);
   for (let i = 1; i < recordingNotes.length; i++) {
     const noteIndex = i;
     scheduleTimeout(() => {
       if (!isRecording) return; // すでに録音が終わっていたら何もしない
       recNotes.forEach(c => c.classList.remove("playing"));
       recNotes[noteIndex].classList.add("playing");
+      // 【かけあい追加】担当が入れかわる音に来たら、見出しも切り替える
+      if (owners && owners[noteIndex] !== owners[noteIndex - 1]) {
+        setKakeaiTurnLabel(owners[noteIndex]);
+      }
     }, offsetSec * 1000);
-    offsetSec += recordingNotes[i].sec;
+    offsetSec += noteSec(recordingNotes[i]);
   }
 
   // 課題の長さぶん(+1秒)たったら自動で止める
@@ -1839,7 +2005,9 @@ function startRecording() {
 // 【もどる導線追加】カウントダウン中に「もどる」が押されたときの後片付け
 function cancelCountdownAndGoBack() {
   if (countdownTimerId) { clearInterval(countdownTimerId); countdownTimerId = null; }
-  if (challengeActive) {
+  if (kakeaiActive) {
+    showScreen("kakeaiSetup"); // 【かけあい追加】
+  } else if (challengeActive) {
     endChallengeAndGoHome();
   } else {
     showSoloStart();
@@ -1931,7 +2099,10 @@ function stopRecording() {
 
   // 【工程6追加】おやこチャレンジ中は、通常の結果画面(弱点判定つき)ではなく、
   // チャレンジ専用の「1人ぶんの結果→交代→チームスコア」の流れに進む
-  if (challengeActive) {
+  // 【かけあい追加】かけあいは1回の録音で1つの点数。そのままチームスコアとして発表する
+  if (kakeaiActive) {
+    handleKakeaiResult(result);
+  } else if (challengeActive) {
     handleChallengeTurnResult(result);
   } else {
     showResult(result);
@@ -1948,7 +2119,9 @@ function cancelRecordingAndGoBack() {
     mediaStream.getTracks().forEach(t => t.stop());
     mediaStream = null;
   }
-  if (challengeActive) {
+  if (kakeaiActive) {
+    showScreen("kakeaiSetup"); // 【かけあい追加】曲えらびまで戻さず、じゅんび画面に戻す
+  } else if (challengeActive) {
     endChallengeAndGoHome();
   } else {
     showSoloStart();
@@ -2001,6 +2174,7 @@ function freqToCentsDiff(freq, targetFreq) {
 // 各音に割り当てる時間(秒)の区切りを作る。
 // windowSec = 採点に使う時間の幅(録音時間から、歌い出しまでの待ち時間を引いたもの)
 function buildSegmentBounds(notes, windowSec) {
+  // ここは「割合」しか使わないので、はやさ設定(noteSec)をかけなくても結果は同じ
   const totalSec = notes.reduce((a, n) => a + n.sec, 0);
   const bounds = [];
   let acc = 0;
@@ -2024,6 +2198,7 @@ function segIndexAt(relTime, bounds) {
 // 音が長いほど道も長く描かれるので、見た目と採点の区切りが必ず一致する
 function buildRailsForNotes(notes) {
   const railCents = getRailCentsForNotes(notes);
+  // ここは「割合」しか使わないので、はやさ設定(noteSec)をかけなくても結果は同じ
   const totalSec = notes.reduce((a, n) => a + n.sec, 0);
   let acc = 0;
   return notes.map((n, i) => {
@@ -2662,11 +2837,18 @@ function showChallengeTeamResult() {
   teamNextGoalText.textContent = "つぎの もくひょう:" + nextGoal + "てん!";
   challengeGoal = nextGoal; // 次回の判定に使うため控えておく
 
+  challengeEndBtn.textContent = "おやこチャレンジを おわる"; // 【かけあい追加】文言を元に戻す
   showScreen("challengeTeam");
 }
 
 // 「もういちど 2にんで うたう」:今回のチームスコアを基準にして、おとなの番からやり直す
 challengeRetryBtn.addEventListener("click", () => {
+  // 【かけあい追加】かけあいのときは、手わたしのない同じ流れをもう一度やる
+  if (kakeaiActive) {
+    previousTeamTotal = parseInt(teamScoreNum.textContent, 10) || null;
+    beginSingingFlow();
+    return;
+  }
   previousTeamTotal = parentScore + childScore;
   parentScore = null;
   childScore = null;
@@ -2677,6 +2859,7 @@ challengeRetryBtn.addEventListener("click", () => {
 // 【もどる導線追加】この後片付け処理は、チャレンジ途中の画面で「もどる」を押したときにも使い回す
 function endChallengeAndGoHome() {
   challengeActive = false;
+  kakeaiActive = false; // 【かけあい追加】かけあいの状態も必ず解除する
   challengeTurn = null;
   previousTeamTotal = null;
   challengeChildOctaveUp = false;
@@ -2710,11 +2893,15 @@ function setupChallengeReviewScreen(turn) {
   const data = turn === "parent" ? challengeParentData : challengeChildData;
   if (!data) return; // まだその人の記録がない場合は何もしない(こどもが未挑戦のときの保険)
 
-  reviewTurnLabel.textContent = turn === "parent" ? "おとなの みち" : "こどもの みち";
+  // 【かけあい追加】かけあいは「ふたりで1本の道」なので、見出しもそれに合わせる
+  reviewTurnLabel.textContent = kakeaiActive
+    ? "ふたりの みち"
+    : (turn === "parent" ? "おとなの みち" : "こどもの みち");
   // 【設計どおり】直すポイントは出さず、「よかったところ」だけをmakeFeedbackから流用する
   reviewGoodPoint.textContent = makeFeedback(data.result).good;
-  // おとなの道を見ているときだけ「つぎへ」を出す。こどもの道のときは「もどる」だけにする
-  reviewNextBtn.style.display = turn === "parent" ? "block" : "none";
+  // おとなの道を見ているときだけ「つぎへ」を出す。こどもの道のときは「もどる」だけにする。
+  // 【かけあい追加】かけあいは録音が1本しかないので「つぎへ」は出さない
+  reviewNextBtn.style.display = (turn === "parent" && challengeChildData) ? "block" : "none";
 
   showScreen("challengeReview");
   setTimeout(playReviewRoadReplay, 400); // 結果画面と同じく、切り替わった少し後に自動再生
@@ -3441,9 +3628,9 @@ function buildIdealRoadData(notes) {
   notes.forEach((n, i) => {
     const steps = 6; // なめらかに動くよう、1音につき数点ぶんの位置を作る
     for (let k = 0; k < steps; k++) {
-      data.push({ time: t + (k / steps) * n.sec, cents: railCents[i], matched: true });
+      data.push({ time: t + (k / steps) * noteSec(n), cents: railCents[i], matched: true });
     }
-    t += n.sec;
+    t += noteSec(n);
   });
   return data;
 }
@@ -3459,8 +3646,8 @@ function playSingAlong() {
   const startTime = ctx.currentTime + 0.1;
   let scheduleOffset = 0;
   notes.forEach(n => {
-    playPianoNote(n.freq, n.sec * 0.95, startTime + scheduleOffset);
-    scheduleOffset += n.sec;
+    playPianoNote(n.freq, noteSec(n) * 0.95, startTime + scheduleOffset);
+    scheduleOffset += noteSec(n);
   });
 
   // カラオケ風ガイド:音の丸を順番に光らせる。【音を止める機能追加】scheduleTimeout経由にする
@@ -3470,12 +3657,12 @@ function playSingAlong() {
       notesRowSingAlongEls.forEach(c => c.classList.remove("playing"));
       notesRowSingAlongEls[i].classList.add("playing");
     }, 100 + lightOffset * 1000);
-    lightOffset += n.sec;
+    lightOffset += noteSec(n);
   });
 
   // 音の道:採点はせず、お手本どおりに進む「理想の軌跡」を光らせるだけ
   const idealData = buildIdealRoadData(notes);
-  const totalSec = notes.reduce((a, n) => a + n.sec, 0);
+  const totalSec = notes.reduce((a, n) => a + noteSec(n), 0);
   const rails = buildRailsForNotes(notes); // 【工程7A修正】音の長さの比率で道を区切る
 
   if (singAlongAnimId) cancelAnimationFrame(singAlongAnimId);
@@ -3519,6 +3706,163 @@ function startNurseryChallenge() {
 }
 nurseryChallengeBtn.addEventListener("click", startNurseryChallenge);
 singAlongToChallengeBtn.addEventListener("click", startNurseryChallenge);
+
+/* =========================================================
+   かけあいモード(かけあい追加)
+   ・1曲を「フレーズごと」に2人で分けて歌う。録音は1本だけ
+   ・端末は置いたままでよい(手わたしなし)。まちじかんも数秒ずつ
+   ・点数は「ふたりで1つ」しか出さない。個人の点数を作らないので、
+     勝ち負けの比較が構造的に生まれない(設計書10章の考えかたを守る)
+   ・設計書9章の「ひとりずつ こうたい」方式は消さずに残してある
+   ========================================================= */
+const kakeaiEnterBtn = document.getElementById("kakeaiEnterBtn");
+const kakeaiTitle = document.getElementById("kakeaiTitle");
+const kakeaiFirstParentBtn = document.getElementById("kakeaiFirstParent");
+const kakeaiFirstChildBtn = document.getElementById("kakeaiFirstChild");
+const notesRowKakeai = document.getElementById("notesRowKakeai");
+const kakeaiListenBtn = document.getElementById("kakeaiListenBtn");
+const kakeaiSingBtn = document.getElementById("kakeaiSingBtn");
+const kakeaiBackBtn = document.getElementById("kakeaiBackBtn");
+const kakeaiStatus = document.getElementById("kakeaiStatus");
+const kakeaiTurnLabel = document.getElementById("kakeaiTurnLabel");
+
+// 音ごとの担当を決める。フレーズ単位で、2人が交互に受けもつ
+function buildKakeaiOwners(song, firstTurn) {
+  const other = firstTurn === "parent" ? "child" : "parent";
+  const phrases = song.phrases || [song.notes.length]; // 区切りがない曲は全部ひとりぶんとして扱う
+  const owners = [];
+  phrases.forEach((len, phraseIndex) => {
+    const owner = (phraseIndex % 2 === 0) ? firstTurn : other;
+    for (let k = 0; k < len; k++) owners.push(owner);
+  });
+  // 【安全策】フレーズの合計と音数がずれていても落ちないようにする
+  while (owners.length < song.notes.length) owners.push(owners[owners.length - 1] || firstTurn);
+  return owners.slice(0, song.notes.length);
+}
+
+// 「いま歌う人」の大きな見出しを切り替える
+function setKakeaiTurnLabel(owner) {
+  kakeaiTurnLabel.className = "kakeai-turn " + owner;
+  kakeaiTurnLabel.textContent = owner === "parent" ? "🧑 おとな!" : "🧒 こども!";
+}
+
+// じゅんび画面の表示を作りなおす(順番を選ぶたびに呼ぶ)
+function renderKakeaiSetup() {
+  const song = getSongById(kakeaiSongId);
+  kakeaiOwners = buildKakeaiOwners(song, kakeaiFirst);
+  kakeaiFirstParentBtn.classList.toggle("selected", kakeaiFirst === "parent");
+  kakeaiFirstChildBtn.classList.toggle("selected", kakeaiFirst === "child");
+  renderNoteCircles(notesRowKakeai, song.notes, "kakeaiNote", kakeaiOwners);
+}
+
+// 「▶️ きく」:お手本を鳴らしながら、担当の色のまま順番に光らせる
+function playKakeaiPreview() {
+  stopAllSounds(); // 前の再生が残っていたら止める
+  const ctx = ensureAudioContext();
+  const song = getSongById(kakeaiSongId);
+  const notes = song.notes;
+  const els = renderNoteCircles(notesRowKakeai, notes, "kakeaiNote", kakeaiOwners);
+  kakeaiStatus.classList.remove("error");
+  kakeaiStatus.textContent = "いろの じゅんばんを おぼえよう!";
+
+  const startTime = ctx.currentTime + 0.1;
+  let offset = 0;
+  notes.forEach((n, i) => {
+    playPianoNote(n.freq, noteSec(n) * 0.95, startTime + offset);
+    const idx = i;
+    scheduleTimeout(() => {
+      els.forEach(c => c.classList.remove("playing"));
+      els[idx].classList.add("playing");
+    }, 100 + offset * 1000);
+    offset += noteSec(n);
+  });
+  // 再生が終わったら光りを消す
+  scheduleTimeout(() => {
+    els.forEach(c => c.classList.remove("playing"));
+    kakeaiStatus.textContent = "じゅんびが できたら うたおう!";
+  }, 100 + offset * 1000);
+}
+
+// 「🎭 ふたりで かけあい」:じゅんび画面をひらく
+kakeaiEnterBtn.addEventListener("click", () => {
+  if (!selectedNurserySongId) return;
+  kakeaiSongId = selectedNurserySongId;
+  activeSongId = selectedNurserySongId; // 録音で使う課題として確定させる
+  challengeActive = false;      // ひとりずつ交代の流れとは混ざらないようにする
+  challengeFixedSongId = null;
+  kakeaiActive = true;
+  previousTeamTotal = null;     // 新しい曲なので、前回との比較はリセットする
+  challengeGoal = null;
+  challengeParentData = null;
+  challengeChildData = null;
+  kakeaiFirst = "parent";       // 初期値。ボタンでいつでも変えられる
+  kakeaiTitle.textContent = getSongById(kakeaiSongId).name;
+  kakeaiStatus.classList.remove("error");
+  kakeaiStatus.textContent = "じゅんばんを えらんでね";
+  renderKakeaiSetup();
+  showScreen("kakeaiSetup");
+});
+
+// さいしょに歌う人をえらぶ(順番は固定しない)
+kakeaiFirstParentBtn.addEventListener("click", () => { kakeaiFirst = "parent"; renderKakeaiSetup(); });
+kakeaiFirstChildBtn.addEventListener("click", () => { kakeaiFirst = "child"; renderKakeaiSetup(); });
+
+kakeaiListenBtn.addEventListener("click", playKakeaiPreview);
+kakeaiSingBtn.addEventListener("click", beginSingingFlow);
+
+kakeaiBackBtn.addEventListener("click", () => {
+  kakeaiActive = false;
+  showScreen("songCorner");
+});
+
+// 録音が終わったあとの処理。点数は「ふたりで1つ」だけ出す
+function handleKakeaiResult(result) {
+  if (result.noVoice) {
+    // 声が録れなかったときは責めずに、じゅんび画面へ戻してもう一度さそう
+    kakeaiStatus.classList.add("error");
+    kakeaiStatus.textContent = "こえが とどかなかったみたい。もういちど ためしてね!";
+    showScreen("kakeaiSetup");
+    return;
+  }
+  kakeaiStatus.classList.remove("error");
+
+  // 音の道のふりかえり用に、この録音を控えておく(端末のメモリ内だけ。保存も送信もしない)
+  challengeParentData = { samples: pitchSamples.slice(), startTime: scoringStartTime, result: result };
+  challengeChildData = null; // かけあいは録音が1本だけ
+
+  // 【工程7A】この曲を最後までうたったので、ひみつのステージの解放条件をみる
+  checkSecretUnlockAfterChallenge(kakeaiSongId, result.total);
+
+  // チームスコアとして発表する(既存のチームスコア画面をそのまま使う)
+  const teamTotal = result.total;
+  teamScoreNum.textContent = teamTotal;
+
+  if (previousTeamTotal !== null) {
+    const diff = teamTotal - previousTeamTotal;
+    if (diff > 0) {
+      teamCompareText.textContent = "チームスコアが " + diff + "てん アップ⤴️!";
+    } else if (diff === 0) {
+      teamCompareText.textContent = "きろくを キープ できたね!";
+    } else {
+      // 下がっても否定しない(設計書のルールどおり)
+      teamCompareText.textContent = "かなり ちかづいて きたよ!";
+    }
+    teamCompareBox.style.display = "block";
+  } else {
+    teamCompareBox.style.display = "none";
+  }
+
+  // 前回だした「もくひょう」をこえていたらお祝いする
+  teamGoalAchievedText.style.display =
+    (challengeGoal !== null && teamTotal >= challengeGoal) ? "block" : "none";
+
+  const nextGoal = teamTotal + 10;
+  teamNextGoalText.textContent = "つぎの もくひょう:" + nextGoal + "てん!";
+  challengeGoal = nextGoal;
+
+  challengeEndBtn.textContent = "かけあいを おわる"; // かけあい用の文言にする
+  showScreen("challengeTeam");
+}
 
 // 【うたのコーナー機能追加】ページを開いた時点で、ホームのボタン表示を初期状態にしておく
 showSoloStart();
