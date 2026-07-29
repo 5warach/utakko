@@ -337,6 +337,21 @@
     .unlock-text { animation: none; }
   }
 
+  /* 【リズム音追加】フレーズの頭に来た瞬間、その音をポンと大きくして知らせる */
+  @keyframes phraseCuePop {
+    0%   { transform: scale(1); }
+    35%  { transform: scale(1.45); }
+    100% { transform: scale(1); }
+  }
+  .note-chip.cue, .note-circle.cue {
+    animation: phraseCuePop 0.45s ease-out;
+    box-shadow: 0 0 0 4px #ffd166;
+  }
+  /* つぎのフレーズの頭を、1音まえから やさしく光らせて「もうすぐ番だよ」と伝える */
+  .note-chip.next-cue, .note-circle.next-cue {
+    box-shadow: 0 0 0 3px #ffe9a8;
+  }
+
   /* 【かけあい追加】だれが歌うところかを色で見せる。
      .note-chip.c0 などより後ろに、同じ強さ(クラス2つ)で書くことで色を上書きする */
   .note-chip.note-chip--parent { background: #4a9eda; color: #fff; }
@@ -599,6 +614,10 @@
       <button class="level-btn tempo-btn" data-tempo="normal">🎵 ふつう</button>
       <button class="level-btn tempo-btn" data-tempo="fast">🐇 はやい</button>
     </div>
+    <!-- 【リズム音追加】フレーズの頭で「カッ」と鳴らして、歌い出しの目じるしにする -->
+    <div class="level-row">
+      <button class="level-btn click-btn">🔔 リズムの おと</button>
+    </div>
     <!-- 【工程6追加】こどもの番のときだけ表示。お手本を1オクターブ上げて聞ける(聞こえ方だけを変える。採点には影響しない) -->
     <button class="mid-btn" id="childHeightBtn" style="display:none; background:#1dd1a1;">🧒 こどものたかさ:OFF</button>
     <button class="mid-btn" id="listenBtn">▶️ きく</button>
@@ -643,6 +662,9 @@
     <div class="road-wrap" id="roadWrap">
       <canvas id="roadCanvas"></canvas>
       <button class="small-btn" id="replayBtn">▶️ もういちど みる</button>
+      <!-- 【こえ再生追加】録音した自分の声を聞き返す。音声は端末のメモリの中だけにあり、
+           保存も外部送信もしない(画面を出ると消える) -->
+      <button class="small-btn" id="playVoiceBtn">🔊 じぶんの こえを きく</button>
     </div>
     <div class="feedback-box">
       <span class="label">🌟 よかったところ</span>
@@ -766,6 +788,8 @@
     <div class="road-wrap" id="reviewRoadWrap">
       <canvas id="reviewRoadCanvas"></canvas>
       <button class="small-btn" id="reviewReplayBtn">▶️ もういちど みる</button>
+      <!-- 【こえ再生追加】 -->
+      <button class="small-btn" id="reviewPlayVoiceBtn">🔊 じぶんの こえを きく</button>
     </div>
     <div class="feedback-box">
       <span class="label">🌟 よかったところ</span>
@@ -785,6 +809,10 @@
       <button class="level-btn tempo-btn" data-tempo="slow">🐢 ゆっくり</button>
       <button class="level-btn tempo-btn" data-tempo="normal">🎵 ふつう</button>
       <button class="level-btn tempo-btn" data-tempo="fast">🐇 はやい</button>
+    </div>
+    <!-- 【リズム音追加】フレーズの頭で「カッ」と鳴らして、歌い出しの目じるしにする -->
+    <div class="level-row">
+      <button class="level-btn click-btn">🔔 リズムの おと</button>
     </div>
     <!-- パブリックドメインの童謡だけを並べる。
          【工程7A追加】曲が増えたので、1列ではなく画面幅で折り返す(song-cards--wrap) -->
@@ -1163,6 +1191,56 @@ try {
   // 保存が読めなくても「ふつう」で動かす
 }
 
+/* ---------- 【リズム音追加】フレーズの頭で鳴らす「カッ」という音 ----------
+   ・伴奏(メロディー)を鳴らすと、その音をマイクが拾って採点してしまうので鳴らさない
+   ・かわりに「音の高さを持たない“カッ”という音」だけを、フレーズの頭で鳴らす
+   ・鳴らす時刻はこちらが決めているので、その直後だけピッチの記録を止められる
+     (録音開始の合図音よけガードと同じ考えかた) */
+let clickEnabled = true; // 既定はオン(無音で長い曲を歌うのが難しかったため)
+try {
+  const savedClick = localStorage.getItem("utakko_click");
+  if (savedClick === "off") clickEnabled = false;
+} catch (e) {
+  // 読めなくてもオンで動かす
+}
+const CLICK_MUTE_SEC = 0.12; // 「カッ」の直後、この秒数はピッチを記録しない
+let clickMuteStarts = [];    // その録音で「カッ」が鳴る時刻(録音開始からの秒数)
+
+// いま「カッ」の直後かどうか
+function isInClickMute(t) {
+  for (let i = 0; i < clickMuteStarts.length; i++) {
+    const s = clickMuteStarts[i];
+    if (t >= s && t < s + CLICK_MUTE_SEC) return true;
+  }
+  return false;
+}
+
+/* 「カッ」を鳴らす。ドレミのような音の高さを持たない“ノイズ”で作るので、
+   まちがってマイクに入っても「確からしさ」の判定でほぼ弾かれる。
+   high=true にすると少し高い音になる(かけあいで🧒の番を区別するのに使う) */
+function playClickSound(when, high) {
+  const ctx = ensureAudioContext();
+  const len = Math.floor(ctx.sampleRate * 0.04); // 0.04秒のごく短い音
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    // だんだん小さくなるノイズ=打楽器のような「カッ」
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+  }
+  const source = ctx.createBufferSource();
+  source.buffer = buf;
+  const filter = ctx.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.frequency.value = high ? 2400 : 1300;
+  filter.Q.value = 1.2;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.22; // 声をかき消さない controlled な大きさ
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  source.start(when);
+}
+
 // 1つの音の「実際に鳴らす長さ(秒)」。はやさ設定を反映した値を返す
 function noteSec(n) {
   return n.sec * TEMPOS[currentTempo];
@@ -1414,6 +1492,15 @@ let previousTeamTotal = null;       // 前回のチームスコア(再挑戦の�
 let challengeGoal = null;           // 【課題選択機能追加】前回表示した「つぎの もくひょう」の点数
 let challengeChildOctaveUp = false; // 「こどものたかさ」ボタンのON/OFF(お手本の聞こえ方だけを変える)
 
+/* 【こえ再生追加】録音した自分の声を聞き返すための置き場。
+   すべて「メモリの中」だけ。localStorageには保存せず、外部にも送らない。
+   画面を移動したり、新しく録音を始めたりすると捨てられる */
+let voiceRecorderNode = null;  // マイクの音を控える部品
+let voiceRecorderGain = null;  // 音量0のつまみ(自分の声が返ってこないようにする)
+let recordedChunks = [];       // 録音中の音のかけら
+let lastRecordedAudio = null;  // 聞き返せる状態にまとめたもの
+let voicePlaybackSource = null; // 再生中の音(止められるように控える)
+
 // 【かけあい追加】1回の録音のなかで、フレーズごとに歌う人が入れかわるモードの状態。
 // 点数は「ふたりで1つ」だけ出す(個人の点数は作らない=勝ち負けが生まれない)
 let kakeaiActive = false;      // かけあいモードで歌っているか
@@ -1524,6 +1611,27 @@ document.querySelectorAll(".tempo-btn").forEach(btn => {
   });
 });
 updateTempoButtons();
+
+/* 【リズム音追加】リズム音のオン/オフ。2か所に置いた同じボタンをまとめて扱う */
+function updateClickButtons() {
+  document.querySelectorAll(".click-btn").forEach(btn => {
+    btn.classList.toggle("selected", clickEnabled);
+    btn.textContent = clickEnabled ? "🔔 リズムの おと あり" : "🔕 リズムの おと なし";
+  });
+}
+document.querySelectorAll(".click-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    clickEnabled = !clickEnabled;
+    try {
+      localStorage.setItem("utakko_click", clickEnabled ? "on" : "off");
+    } catch (e) {
+      // 保存できなくても、その回のあいだは選んだ設定で遊べる
+    }
+    updateClickButtons();
+    if (clickEnabled) playClickSound(); // どんな音か、その場で1回鳴らして確かめられる
+  });
+});
+updateClickButtons();
 
 levelEasyBtn.addEventListener("click", () => selectLevel("easy"));
 levelNormalBtn.addEventListener("click", () => selectLevel("normal"));
@@ -1636,6 +1744,13 @@ const globalBackBtn = document.getElementById("globalBackBtn");
 let currentScreenName = "start"; // 【もどる導線追加】いま表示中の画面名を覚えておく
 
 function showScreen(name) {
+  // 【こえ再生追加】画面がうつるときは、鳴っている声を止めてボタンの表示も戻す。
+  // (この関数はファイルの前のほうにあるので、後ろで宣言している定数は使わずidで取り直す)
+  stopVoicePlayback();
+  ["playVoiceBtn", "reviewPlayVoiceBtn"].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.textContent = "🔊 じぶんの こえを きく";
+  });
   stopAllSounds(); // 【音を止める機能追加】画面を切り替える前に、鳴っている・予約中の音をすべて止める
   Object.values(screens).forEach(s => s.classList.remove("show"));
   screens[name].classList.add("show");
@@ -1877,6 +1992,33 @@ async function beginSingingFlow() {
     analyserNode.fftSize = 2048;
     source.connect(analyserNode);
     inputBuffer = new Float32Array(analyserNode.fftSize);
+
+    /* 【こえ再生追加】あとで聞き返せるように、マイクの音そのものを控えておく。
+       ・置き場所は「メモリの中(ただの配列)」だけ。localStorageにも保存しない
+       ・画面をうつると捨てるので、アプリを閉じれば必ず消える
+       ・外部への送信はしない(fetch等は一切使わない)
+       ScriptProcessorNodeは古い部品だが、iPhoneのSafariでも確実に動くのでこれを使う */
+    recordedChunks = [];
+    try {
+      voiceRecorderNode = audioContext.createScriptProcessor(4096, 1, 1);
+      voiceRecorderNode.onaudioprocess = (e) => {
+        if (!isRecording) return;
+        // そのままだと使い回される箱なので、コピーして control 側に残す
+        recordedChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      };
+      // 音を出さないための音量0のつまみを通してからスピーカーにつなぐ。
+      // (ブラウザによっては、スピーカーにつながないと処理が動かないため。
+      //  音量0なので、自分の声がスピーカーから返ってくることはない)
+      voiceRecorderGain = audioContext.createGain();
+      voiceRecorderGain.gain.value = 0;
+      source.connect(voiceRecorderNode);
+      voiceRecorderNode.connect(voiceRecorderGain);
+      voiceRecorderGain.connect(audioContext.destination);
+    } catch (e) {
+      // この部品が使えない端末では、聞き返し機能だけをあきらめる(採点はふつうに動く)
+      voiceRecorderNode = null;
+      console.log("こえの控えが使えません:", e);
+    }
     if (PitchDetector) {
       detector = PitchDetector.forFloat32Array(analyserNode.fftSize);
     }
@@ -1981,13 +2123,43 @@ function startRecording() {
   recNotes.forEach(c => c.classList.remove("playing"));
   recNotes[0].classList.add("playing"); // 最初の音から
   if (owners) setKakeaiTurnLabel(owners[0]);
+  /* 【リズム音追加】フレーズの先頭の音の位置をもとめる。
+     ここで「カッ」を鳴らし、その音をポンと大きくして歌い出しの目じるしにする */
+  const recSong = getSongById(activeSongId);
+  const phraseStarts = [];
+  if (clickEnabled && recSong.phrases) {
+    let idx = 0;
+    recSong.phrases.forEach(len => { phraseStarts.push(idx); idx += len; });
+  }
+  clickMuteStarts = [];
+
+  // 各音が始まる時刻(録音開始からの秒数)をさきに全部もとめておく
+  const noteOffsets = [];
+  let acc = 0;
+  recordingNotes.forEach(n => { noteOffsets.push(acc); acc += noteSec(n); });
+
+  // 「カッ」の予約(音は時刻を指定して正確に鳴らす)
+  phraseStarts.forEach(i => {
+    if (i >= recordingNotes.length) return;
+    const t = noteOffsets[i];
+    clickMuteStarts.push(t);
+    playClickSound(recordStartTime + t, owners ? owners[i] === "child" : false);
+  });
+
   let offsetSec = noteSec(recordingNotes[0]);
+  if (phraseStarts.indexOf(0) >= 0) recNotes[0].classList.add("cue"); // 1音めの合図
   for (let i = 1; i < recordingNotes.length; i++) {
     const noteIndex = i;
     scheduleTimeout(() => {
       if (!isRecording) return; // すでに録音が終わっていたら何もしない
-      recNotes.forEach(c => c.classList.remove("playing"));
+      recNotes.forEach(c => c.classList.remove("playing", "cue", "next-cue"));
       recNotes[noteIndex].classList.add("playing");
+      // 【リズム音追加】フレーズの頭ならポンと大きくする
+      if (phraseStarts.indexOf(noteIndex) >= 0) recNotes[noteIndex].classList.add("cue");
+      // つぎの音がフレーズの頭なら、1音まえから やさしく光らせて予告する
+      if (phraseStarts.indexOf(noteIndex + 1) >= 0 && recNotes[noteIndex + 1]) {
+        recNotes[noteIndex + 1].classList.add("next-cue");
+      }
       // 【かけあい追加】担当が入れかわる音に来たら、見出しも切り替える
       if (owners && owners[noteIndex] !== owners[noteIndex - 1]) {
         setKakeaiTurnLabel(owners[noteIndex]);
@@ -2035,9 +2207,13 @@ function recordLoop() {
 
   const sampleTime = audioContext.currentTime - recordStartTime;
 
+  // 【リズム音追加】「カッ」を鳴らした直後は、その音が混ざるので何も記録しない。
+  // 鳴らす時刻はこちらが決めているので、確実によけられる
+  const inClickMute = isInClickMute(sampleTime);
+
   // 【今回追加】歌い出しの検出:ガード終了後、音量がしきい値を0.15秒以上連続で超えた
   // 最初の時点を「歌い出し」とする(ピッチが検出できたかどうかは関係なく、音量だけで見る)
-  if (sampleTime >= RECORD_START_GUARD_SEC) {
+  if (sampleTime >= RECORD_START_GUARD_SEC && !inClickMute) {
     if (rms >= VOLUME_THRESHOLD) {
       if (aboveThresholdSince === null) aboveThresholdSince = sampleTime;
       if (voiceOnsetTime === null && sampleTime - aboveThresholdSince >= ONSET_HOLD_SEC) {
@@ -2059,7 +2235,8 @@ function recordLoop() {
       freq = result.freq; clarity = result.clarity;
     }
     // 開始合図音(880Hz)が録れてしまう最初の0.35秒ぶんは、判定から除外する
-    if (sampleTime >= RECORD_START_GUARD_SEC &&
+    // 【リズム音追加】「カッ」の直後(inClickMute)も同じように除外する
+    if (sampleTime >= RECORD_START_GUARD_SEC && !inClickMute &&
         freq > 0 && clarity >= CLARITY_THRESHOLD && freq >= MIN_FREQ && freq <= MAX_FREQ) {
       pitchSamples.push({
         time: sampleTime,
@@ -2076,6 +2253,10 @@ function stopRecording() {
   isRecording = false;
   if (recordingAutoStopTimeoutId) { clearTimeout(recordingAutoStopTimeoutId); recordingAutoStopTimeoutId = null; }
   if (animationId) cancelAnimationFrame(animationId);
+
+  // 【こえ再生追加】控えておいた音を、聞き返せる形にまとめる
+  lastRecordedAudio = buildRecordedAudio();
+  disconnectVoiceRecorder();
 
   // マイクを完全に止める(使用中マークも消える)
   if (mediaStream) {
@@ -2115,6 +2296,10 @@ function cancelRecordingAndGoBack() {
   isRecording = false;
   if (recordingAutoStopTimeoutId) { clearTimeout(recordingAutoStopTimeoutId); recordingAutoStopTimeoutId = null; }
   if (animationId) cancelAnimationFrame(animationId);
+  // 【こえ再生追加】途中でやめた録音は聞き返せる形にせず、その場で捨てる
+  disconnectVoiceRecorder();
+  recordedChunks = [];
+  lastRecordedAudio = null;
   if (mediaStream) {
     mediaStream.getTracks().forEach(t => t.stop());
     mediaStream = null;
@@ -2716,6 +2901,7 @@ function startChallengeTurnScreen(turn) {
 // 【今回追加】ひとり練習のホーム画面に戻す共通処理。
 // ひとり練習は常にドレミ(PRACTICE_SONGS[0])固定・選択画面なしにする
 function showSoloStart() {
+  clearRecordedAudio(); // 【こえ再生追加】ホームに戻ったら、控えてある声はすべて捨てる
   challengeFixedSongId = null;
   activeSongId = PRACTICE_SONGS[0].id;
   songCardsWrap.style.display = "none";
@@ -2764,7 +2950,8 @@ function handleChallengeTurnResult(result) {
   const turnData = {
     samples: pitchSamples.slice(),
     startTime: scoringStartTime,
-    result: result
+    result: result,
+    audio: lastRecordedAudio // 【こえ再生追加】この人の声(メモリ内のみ)
   };
 
   if (challengeTurn === "parent") {
@@ -2858,6 +3045,9 @@ challengeRetryBtn.addEventListener("click", () => {
 // 「おやこチャレンジを おわる」:ふつうの ひとり練習画面に戻す
 // 【もどる導線追加】この後片付け処理は、チャレンジ途中の画面で「もどる」を押したときにも使い回す
 function endChallengeAndGoHome() {
+  clearRecordedAudio(); // 【こえ再生追加】チャレンジを終えたら、控えてある声はすべて捨てる
+  if (challengeParentData) challengeParentData.audio = null;
+  if (challengeChildData) challengeChildData.audio = null;
   challengeActive = false;
   kakeaiActive = false; // 【かけあい追加】かけあいの状態も必ず解除する
   challengeTurn = null;
@@ -3708,6 +3898,101 @@ nurseryChallengeBtn.addEventListener("click", startNurseryChallenge);
 singAlongToChallengeBtn.addEventListener("click", startNurseryChallenge);
 
 /* =========================================================
+   【こえ再生追加】録音した自分の声を聞き返すしくみ
+   ・音は端末のメモリの中だけに置き、localStorageにも保存しない
+   ・外部への送信は一切しない(このアプリにfetch等は1つもない)
+   ・ホームに戻る/新しく録音する/チャレンジを終える、のいずれかで捨てる
+   ========================================================= */
+
+// 控えておいた音のかけらを、1本の音としてつなぎ直す
+function buildRecordedAudio() {
+  if (!recordedChunks.length || !audioContext) return null;
+  const total = recordedChunks.reduce((a, c) => a + c.length, 0);
+  if (total === 0) return null;
+  const buffer = audioContext.createBuffer(1, total, audioContext.sampleRate);
+  const channel = buffer.getChannelData(0);
+  let offset = 0;
+  recordedChunks.forEach(c => { channel.set(c, offset); offset += c.length; });
+  recordedChunks = []; // つなぎ終わったら、かけらのほうは捨てる
+  return buffer;
+}
+
+// 録音用の部品をマイクから切りはなす
+function disconnectVoiceRecorder() {
+  if (voiceRecorderNode) {
+    try {
+      voiceRecorderNode.onaudioprocess = null;
+      voiceRecorderNode.disconnect();
+    } catch (e) {}
+    voiceRecorderNode = null;
+  }
+  if (voiceRecorderGain) {
+    try { voiceRecorderGain.disconnect(); } catch (e) {}
+    voiceRecorderGain = null;
+  }
+}
+
+// 再生中の声を止める
+function stopVoicePlayback() {
+  if (voicePlaybackSource) {
+    try { voicePlaybackSource.stop(); } catch (e) {}
+    voicePlaybackSource = null;
+  }
+}
+
+// 控えてある声をぜんぶ捨てる(ホームに戻るときなど)
+function clearRecordedAudio() {
+  stopVoicePlayback();
+  disconnectVoiceRecorder();
+  recordedChunks = [];
+  lastRecordedAudio = null;
+}
+
+// 声を再生する。btnには押されたボタンを渡して、再生中の表示に変える
+function playRecordedVoice(buffer, btn) {
+  if (!buffer) {
+    btn.textContent = "🔊 こえが のこって いないよ";
+    scheduleTimeout(() => { btn.textContent = "🔊 じぶんの こえを きく"; }, 1600);
+    return;
+  }
+  stopVoicePlayback();
+  const ctx = ensureAudioContext();
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  source.onended = () => {
+    voicePlaybackSource = null;
+    btn.textContent = "🔊 じぶんの こえを きく";
+  };
+  source.start();
+  voicePlaybackSource = source;
+  btn.textContent = "⏹ とめる";
+}
+
+// 結果画面のボタン(ひとり練習・おやこチャレンジの各ターン)
+const playVoiceBtn = document.getElementById("playVoiceBtn");
+playVoiceBtn.addEventListener("click", () => {
+  if (voicePlaybackSource) { // もう鳴っているなら止める
+    stopVoicePlayback();
+    playVoiceBtn.textContent = "🔊 じぶんの こえを きく";
+    return;
+  }
+  playRecordedVoice(lastRecordedAudio, playVoiceBtn);
+});
+
+// ふりかえり画面のボタン(いま見ている人の録音を鳴らす)
+const reviewPlayVoiceBtn = document.getElementById("reviewPlayVoiceBtn");
+reviewPlayVoiceBtn.addEventListener("click", () => {
+  if (voicePlaybackSource) {
+    stopVoicePlayback();
+    reviewPlayVoiceBtn.textContent = "🔊 じぶんの こえを きく";
+    return;
+  }
+  const data = challengeReviewTurn === "parent" ? challengeParentData : challengeChildData;
+  playRecordedVoice(data ? data.audio : null, reviewPlayVoiceBtn);
+});
+
+/* =========================================================
    かけあいモード(かけあい追加)
    ・1曲を「フレーズごと」に2人で分けて歌う。録音は1本だけ
    ・端末は置いたままでよい(手わたしなし)。まちじかんも数秒ずつ
@@ -3827,7 +4112,12 @@ function handleKakeaiResult(result) {
   kakeaiStatus.classList.remove("error");
 
   // 音の道のふりかえり用に、この録音を控えておく(端末のメモリ内だけ。保存も送信もしない)
-  challengeParentData = { samples: pitchSamples.slice(), startTime: scoringStartTime, result: result };
+  challengeParentData = {
+    samples: pitchSamples.slice(),
+    startTime: scoringStartTime,
+    result: result,
+    audio: lastRecordedAudio // 【こえ再生追加】ふたりぶんが入った1本の録音(メモリ内のみ)
+  };
   challengeChildData = null; // かけあいは録音が1本だけ
 
   // 【工程7A】この曲を最後までうたったので、ひみつのステージの解放条件をみる
